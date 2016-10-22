@@ -2,6 +2,7 @@ package main
 
 import (
 	"net/http"
+	"os"
 
 	"golang.org/x/net/context"
 
@@ -11,6 +12,20 @@ import (
 	"github.com/prometheus/prometheus/storage/local"
 	v1API "github.com/prometheus/prometheus/web/api/v1"
 )
+
+const apiRoute = "/api/v1"
+
+var config = struct {
+	listenAddr string
+}{
+	":9080",
+}
+
+func init() {
+	if len(os.Getenv("ADDR")) > 0 {
+		config.listenAddr = os.Getenv("ADDR")
+	}
+}
 
 func main() {
 	var (
@@ -25,6 +40,7 @@ func main() {
 	})
 
 	var api = v1API.NewAPI(queryEngine, storage)
-	api.Register(router.WithPrefix("/api/v1"))
-	log.Fatal(http.ListenAndServe(":9080", router))
+	api.Register(router.WithPrefix(apiRoute))
+
+	log.Fatal(http.ListenAndServe(config.listenAddr, router))
 }
