@@ -28,6 +28,20 @@
 			"revisionTime": "2016-10-21T10:14:53Z"
 		},
 		{
+			"checksumSHA1": "2pbcrNFdreuJi0Vj2wREce/deJc=",
+			"origin": "github.com/prometheus/prometheus/vendor/github.com/influxdb/influxdb/client",
+			"path": "github.com/influxdb/influxdb/client",
+			"revision": "f002fe186abd04ecd9cd8961c24bc039f134ea13",
+			"revisionTime": "2016-10-21T10:14:53Z"
+		},
+		{
+			"checksumSHA1": "6Upfd6wPN4ywN8fpTJHxvz5kQuE=",
+			"origin": "github.com/prometheus/prometheus/vendor/github.com/influxdb/influxdb/tsdb",
+			"path": "github.com/influxdb/influxdb/tsdb",
+			"revision": "f002fe186abd04ecd9cd8961c24bc039f134ea13",
+			"revisionTime": "2016-10-21T10:14:53Z"
+		},
+		{
 			"checksumSHA1": "hBHI8hVbOi3Iq9TfLDxKe7iWoxM=",
 			"path": "github.com/julienschmidt/httprouter",
 			"revision": "59934fa0c2a7f256261ac927b5b96f38f1115597",
@@ -100,6 +114,12 @@
 			"revisionTime": "2016-10-21T10:14:53Z"
 		},
 		{
+			"checksumSHA1": "3uFEPV+XDR1IpdhJVsABWQxswVQ=",
+			"path": "github.com/prometheus/prometheus/relabel",
+			"revision": "f002fe186abd04ecd9cd8961c24bc039f134ea13",
+			"revisionTime": "2016-10-21T10:14:53Z"
+		},
+		{
 			"checksumSHA1": "HR2et2kpR/K9d0WU+nWAYRZ5sf0=",
 			"path": "github.com/prometheus/prometheus/storage",
 			"revision": "f002fe186abd04ecd9cd8961c24bc039f134ea13",
@@ -132,6 +152,30 @@
 		{
 			"checksumSHA1": "cOMbjDs0UuYodFwPMRIgQMWXs7M=",
 			"path": "github.com/prometheus/prometheus/storage/metric",
+			"revision": "f002fe186abd04ecd9cd8961c24bc039f134ea13",
+			"revisionTime": "2016-10-21T10:14:53Z"
+		},
+		{
+			"checksumSHA1": "OzvW6qH2xl5zXZAzGxQLJ/OYQOQ=",
+			"path": "github.com/prometheus/prometheus/storage/remote",
+			"revision": "f002fe186abd04ecd9cd8961c24bc039f134ea13",
+			"revisionTime": "2016-10-21T10:14:53Z"
+		},
+		{
+			"checksumSHA1": "nEYAo2AFRgllsiDNMjDb6xIIcHs=",
+			"path": "github.com/prometheus/prometheus/storage/remote/graphite",
+			"revision": "f002fe186abd04ecd9cd8961c24bc039f134ea13",
+			"revisionTime": "2016-10-21T10:14:53Z"
+		},
+		{
+			"checksumSHA1": "9zgEPOmKzU+VRnJ67NuqYdr3xlM=",
+			"path": "github.com/prometheus/prometheus/storage/remote/influxdb",
+			"revision": "f002fe186abd04ecd9cd8961c24bc039f134ea13",
+			"revisionTime": "2016-10-21T10:14:53Z"
+		},
+		{
+			"checksumSHA1": "0z+OmLLWwV+sJ/s/tpGhHPdgA7M=",
+			"path": "github.com/prometheus/prometheus/storage/remote/opentsdb",
 			"revision": "f002fe186abd04ecd9cd8961c24bc039f134ea13",
 			"revisionTime": "2016-10-21T10:14:53Z"
 		},
@@ -260,6 +304,13 @@
 			"path": "golang.org/x/net/context",
 			"revision": "41c5c5cb12965112d2e298342c73e6b3e045a14a",
 			"revisionTime": "2016-10-21T12:57:00Z"
+		},
+		{
+			"checksumSHA1": "Do+l129/Bafh54VFaquooqtCcfk=",
+			"origin": "github.com/prometheus/prometheus/vendor/golang.org/x/net/context/ctxhttp",
+			"path": "golang.org/x/net/context/ctxhttp",
+			"revision": "f002fe186abd04ecd9cd8961c24bc039f134ea13",
+			"revisionTime": "2016-10-21T10:14:53Z"
 		},
 		{
 			"checksumSHA1": "e6tx+mrbPNlzXbr1VErnBPY+vmQ=",
