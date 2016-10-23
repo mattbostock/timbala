@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -14,7 +15,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang/protobuf/proto"
+	"github.com/golang/snappy"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/storage/remote"
 )
 
 var baseURL string
@@ -35,6 +39,57 @@ func TestSimpleArithmeticQuery(t *testing.T) {
 	expected := "2"
 
 	queryAPI(t, query, expected)
+}
+
+func TestRemoteWrite(t *testing.T) {
+	testSample := model.Sample{
+		Metric:    make(model.Metric, 1),
+		Value:     1234,
+		Timestamp: model.Now(),
+	}
+	testSample.Metric[model.MetricNameLabel] = "foo"
+
+	req := &remote.WriteRequest{
+		Timeseries: make([]*remote.TimeSeries, 0, 1),
+	}
+	ts := &remote.TimeSeries{
+		Labels: make([]*remote.LabelPair, 0, len(testSample.Metric)),
+	}
+	for k, v := range testSample.Metric {
+		ts.Labels = append(ts.Labels,
+			&remote.LabelPair{
+				Name:  string(k),
+				Value: string(v),
+			})
+	}
+	ts.Samples = []*remote.Sample{
+		{
+			Value:       float64(testSample.Value),
+			TimestampMs: int64(testSample.Timestamp),
+		},
+	}
+	req.Timeseries = append(req.Timeseries, ts)
+
+	data, err := proto.Marshal(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	buf := bytes.Buffer{}
+	if _, err := snappy.NewWriter(&buf).Write(data); err != nil {
+		t.Fatal(err)
+	}
+
+	u := fmt.Sprintf("%s%s", baseURL, writeRoute)
+	httpResp, err := http.Post(u, "snappy", &buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer httpResp.Body.Close()
+
+	if httpResp.StatusCode != 200 {
+		t.Fatalf("Expected HTTP status 200, got %d", httpResp.StatusCode)
+	}
 }
 
 func TestMain(m *testing.M) {
