@@ -10,11 +10,11 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/snappy"
+	"github.com/mattbostock/athens/storage"
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/route"
 	"github.com/prometheus/prometheus/promql"
-	"github.com/prometheus/prometheus/storage/local"
 	"github.com/prometheus/prometheus/storage/remote"
 	v1API "github.com/prometheus/prometheus/web/api/v1"
 )
@@ -39,10 +39,13 @@ func init() {
 func main() {
 	var (
 		ctx, cancelCtx = context.WithCancel(context.Background())
-		storage        = &local.NoopStorage{}
+		storage        = &storage.RocksDB{}
 		queryEngine    = promql.NewEngine(storage, promql.DefaultEngineOptions)
 	)
 	defer cancelCtx()
+
+	storage.Start()
+	defer storage.Stop()
 
 	router := route.New(func(r *http.Request) (context.Context, error) {
 		return ctx, nil
@@ -73,6 +76,7 @@ func main() {
 
 			for _, s := range ts.Samples {
 				fmt.Printf("  %f %d\n", s.Value, s.TimestampMs)
+				storage.Append(&model.Sample{m, model.SampleValue(s.Value), model.Time(s.TimestampMs)})
 			}
 		}
 	})
