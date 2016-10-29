@@ -4,6 +4,20 @@ language: go
 go:
   - 1.7.3
   - tip
+# http://genbattle.bitbucket.org/blog/2016/01/17/c++-travis-ci/
+dist: trusty
+sudo: true
+env:
+  global:
+    - CC=gcc-5
+    - CPP=g++-5
+    - CXX=g++-5
+addons:
+  apt:
+    sources:
+      - ubuntu-toolchain-r-test
+    packages:
+      - g++-5
 
 matrix:
   allow_failures:
