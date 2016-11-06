@@ -5,6 +5,7 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/storage/local"
+	"github.com/prometheus/prometheus/storage/local/chunk"
 	"github.com/prometheus/prometheus/storage/metric"
 	"github.com/tecbot/gorocksdb"
 	"golang.org/x/net/context"
@@ -20,13 +21,15 @@ type RocksDB struct {
 func (r *RocksDB) Append(s *model.Sample) error {
 	// FIXME: see (s *MemorySeriesStorage) Append(sample *model.Sample), delete empty metrics
 	// makes sure we add a test for label order, they are sorted
-	_ = time.Now().Format(timeBucketFormat) + s.Metric.String()
+	key = time.Now().Format(timeBucketFormat) + s.Metric.String()
 
 	// FIXME: compare timestamp to last seen for this series, drop it if timestamps are equal
 
+	chunk := chunk.NewForEncoding(chunk.Varbit)
+
 	wo := gorocksdb.NewDefaultWriteOptions()
 	defer wo.Destroy()
-	err := r.db.Put(wo, []byte("foo"), []byte("bar"))
+	err := r.db.Put(wo, []byte(key), []byte("bar"))
 	return err
 }
 
