@@ -1,0 +1,10 @@
+version: '3'
+services:
+  athens:
+    build: ../
+    ports:
+      - 9080:9080
+  prometheus:
+    build: prometheus/
+    links:
+      - athens
