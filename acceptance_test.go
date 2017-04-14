@@ -17,8 +17,8 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/snappy"
+	"github.com/mattbostock/athens/remote"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/storage/remote"
 )
 
 var baseURL string
