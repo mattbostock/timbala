@@ -1,0 +1,62 @@
+site_name: AthensDB
+site_description: Durable time-series database that's API-compatible with Prometheus.
+site_author: Matt Bostock
+site_url: https://athensdb.io/docs/
+
+# Allow GitHub edits
+edit_uri: edit/master/docs
+
+# Repository
+repo_name: mattbostock/athensdb
+repo_url: https://github.com/mattbostock/athensdb
+
+# Copyright
+copyright: 'Copyright &copy; 2017 Matt Bostock'
+
+# Theme
+theme: material
+
+# Options
+extra:
+  feature:
+    tabs: true
+  palette:
+    primary: teal
+    accent: teal
+  social:
+    - type: globe
+      link: https://athensdb.io
+    - type: github
+      link: https://github.com/mattbostock/athensdb
+    - type: twitter
+      link: https://twitter.com/athensdb
+
+# Extensions
+markdown_extensions:
+  - markdown.extensions.admonition
+  - markdown.extensions.codehilite(guess_lang=false)
+  - markdown.extensions.def_list
+  - markdown.extensions.footnotes
+  - markdown.extensions.meta
+  - markdown.extensions.toc(permalink=true)
+  - pymdownx.betterem(smart_enable=all)
+  - pymdownx.caret
+  - pymdownx.critic
+  - pymdownx.emoji:
+      emoji_generator: !!python/name:pymdownx.emoji.to_svg
+  - pymdownx.inlinehilite
+  - pymdownx.magiclink
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+  - pymdownx.superfences
+  - pymdownx.tasklist(custom_checkbox=true)
+  - pymdownx.tilde
+
+# Page tree
+pages:
+  - AthensDB: index.md
+
+# Google Analytics
+google_analytics:
+  - !!python/object/apply:os.getenv ["GOOGLE_ANALYTICS_KEY"]
+  - auto
