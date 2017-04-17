@@ -11,8 +11,8 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/snappy"
-	v1API "github.com/mattbostock/athens/api/v1"
-	"github.com/mattbostock/athens/remote"
+	v1API "github.com/mattbostock/athensdb/api/v1"
+	"github.com/mattbostock/athensdb/remote"
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/route"
 	"github.com/prometheus/prometheus/pkg/labels"
