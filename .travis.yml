@@ -5,6 +5,9 @@ go:
   - 1.8.x
   - tip
 
+services:
+  - docker
+
 matrix:
   allow_failures:
     - tip
