@@ -3,9 +3,9 @@
 This project is an early alpha, written for education purposes. Please don't
 consider putting it into Production.
 
-# AthensDB
+# AthensDB [![Build Status](https://travis-ci.com/mattbostock/athensdb.svg?token=EhqoSPmXWFAXy2qpEaqr&branch=master)](https://travis-ci.com/mattbostock/athensdb)
 
-[![Build Status](https://travis-ci.com/mattbostock/athensdb.svg?token=EhqoSPmXWFAXy2qpEaqr&branch=master)](https://travis-ci.com/mattbostock/athensdb)
+<img src="docs/images/athensdb.svg?raw=1" alt="AthensDB logo" width="50%">
 
 AthensDB is a distributed, fault-tolerant time series database that supports PromQL.
 
