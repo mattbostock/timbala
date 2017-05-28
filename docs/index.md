@@ -1,5 +1,6 @@
-# AthensDB
-**Durable time-series database that's API-compatible with Prometheus.**
+<img src="images/athensdb.svg" alt="AthensDB logo" width="50%">
+
+# Durable time-series database that's API-compatible with Prometheus
 
 **AthensDB** is a durable time-series database with the following
 distinguishing features:
