@@ -2,6 +2,7 @@ site_name: AthensDB
 site_description: Durable time-series database that's API-compatible with Prometheus.
 site_author: Matt Bostock
 site_url: https://athensdb.io/docs/
+site_favicon: favicon.ico
 
 # Allow GitHub edits
 edit_uri: edit/master/docs
@@ -20,6 +21,7 @@ theme: material
 extra:
   feature:
     tabs: true
+  logo: images/a.png
   palette:
     primary: teal
     accent: teal
@@ -54,7 +56,27 @@ markdown_extensions:
 
 # Page tree
 pages:
-  - AthensDB: index.md
+  - About:
+    - Intro: index.md
+    - 'Getting started': getting_started.md
+    - 'Use cases': use_cases.md
+  - Design:
+    - Rationale: rationale.md
+    - Goals: goals.md
+    - Assumptions: assumptions.md
+    - Architecture: architecture.md
+  - Documentation:
+    - Operating:
+      - Requirements: requirements.md
+      - Configuration: configuration.md
+      - Monitoring: monitoring.md
+      - Security: security.md
+      - Backups: backups.md
+    - Querying: querying.md
+    - Ingestion: ingestion.md
+    - Glossary: glossary.md
+  - Community:
+    - Development: development.md
 
 # Google Analytics
 google_analytics:
