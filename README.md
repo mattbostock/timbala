@@ -5,8 +5,6 @@ consider putting it into Production.
 
 # AthensDB [![Build Status](https://travis-ci.com/mattbostock/athensdb.svg?token=EhqoSPmXWFAXy2qpEaqr&branch=master)](https://travis-ci.com/mattbostock/athensdb)
 
-<img src="docs/images/athensdb.svg?raw=1" alt="AthensDB logo" width="50%">
-
 AthensDB is a distributed, fault-tolerant time series database that supports PromQL.
 
 It is intended to provide durable long-term storage for multi-dimensional time
