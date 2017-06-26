@@ -75,13 +75,9 @@ func TestRemoteWrite(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	buf := bytes.Buffer{}
-	if _, err := snappy.NewWriter(&buf).Write(data); err != nil {
-		t.Fatal(err)
-	}
-
+	compressed := snappy.Encode(nil, data)
 	u := fmt.Sprintf("%s%s", baseURL, writeRoute)
-	httpResp, err := http.Post(u, "snappy", &buf)
+	httpResp, err := http.Post(u, "snappy", bytes.NewBuffer(compressed))
 	if err != nil {
 		t.Fatal(err)
 	}

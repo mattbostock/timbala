@@ -64,7 +64,13 @@ func main() {
 	api.Register(router.WithPrefix(apiRoute))
 
 	router.Post("/receive", func(w http.ResponseWriter, r *http.Request) {
-		reqBuf, err := ioutil.ReadAll(snappy.NewReader(r.Body))
+		compressed, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		reqBuf, err := snappy.Decode(nil, compressed)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
