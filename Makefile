@@ -9,9 +9,11 @@ build:
 savedeps:
 	@govendor add +external
 
+test:
+	@go test $(shell go list ./... | grep -v /vendor/)
+
 servedocs:
 	@docker run --rm -it -p 8000:8000 -v `pwd`:/docs squidfunk/mkdocs-material:$(MKDOCS_MATERIAL_VERSION)
 
-test:
-	@go test $(shell go list ./... | grep -v /vendor/)
+testdocs:
 	@docker run --rm -it -v `pwd`:/docs squidfunk/mkdocs-material:$(MKDOCS_MATERIAL_VERSION) build -s

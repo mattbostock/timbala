@@ -12,3 +12,5 @@ matrix:
   allow_failures:
     - tip
   fast_finish: true
+
+script: make test && make testdocs
