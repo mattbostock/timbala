@@ -3,8 +3,8 @@ MAINTAINER Matt Bostock <matt@mattbostock.com>
 
 EXPOSE 9080
 
-WORKDIR /go/src/github.com/mattbostock/athens
-COPY . /go/src/github.com/mattbostock/athens
+WORKDIR /go/src/github.com/mattbostock/athensdb
+COPY . /go/src/github.com/mattbostock/athensdb
 
 RUN apk add --update make && \
   make && \
@@ -12,4 +12,4 @@ RUN apk add --update make && \
   cd && \
   rm -rf /go/src
 
-ENTRYPOINT ["/go/bin/athens"]
+ENTRYPOINT ["/go/bin/athensdb"]
