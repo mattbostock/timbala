@@ -2,11 +2,10 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
+	"context"
 	"errors"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
@@ -18,27 +17,26 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/mattbostock/athensdb/remote"
+	promAPI "github.com/prometheus/client_golang/api"
+	promAPIv1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/common/model"
 )
 
 var baseURL string
 
-type apiQueryData struct {
-	ResultType model.ValueType  `json:"resultType"`
-	Result     model.SamplePair `json:"result"`
-}
-type apiResponse struct {
-	Status    string       `json:"status"`
-	Data      apiQueryData `json:"data,omitempty"`
-	ErrorType string       `json:"errorType,omitempty"`
-	Error     string       `json:"error,omitempty"`
-}
-
 func TestSimpleArithmeticQuery(t *testing.T) {
 	query := "1+1"
 	expected := "2"
 
-	queryAPI(t, query, expected)
+	result, err := queryAPI(query, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := result.(*model.Scalar).Value.String()
+	if got != expected {
+		t.Fatalf("Expected %s, got %s", got, expected)
+	}
 }
 
 func TestRemoteWrite(t *testing.T) {
@@ -71,51 +69,28 @@ func TestMain(m *testing.M) {
 
 	err := waitForServer(baseURL)
 	if err != nil {
-		log.Fatal("Test setup failed: ", err)
+		log.Fatal("Test setup failed:", err)
 	}
 
 	os.Exit(m.Run())
 }
 
-func queryAPI(t *testing.T, query, expected string) {
-	resp, err := http.Get(queryURL(query))
+func queryAPI(query string, ts time.Time) (model.Value, error) {
+	conf := promAPI.Config{
+		Address: baseURL,
+	}
+	client, err := promAPI.NewClient(conf)
 	if err != nil {
-		t.Fatal(err)
+		return nil, err
 	}
 
-	body, err := ioutil.ReadAll(resp.Body)
+	api := promAPIv1.NewAPI(client)
+	values, err := api.Query(context.TODO(), query, ts)
 	if err != nil {
-		t.Fatal("Error reading response body: ", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		t.Fatalf("Got response code %d, expected %s", resp.StatusCode, 200)
+		return nil, err
 	}
 
-	if h := resp.Header.Get("Content-Type"); h != "application/json" {
-		t.Fatalf("Expected Content-Type %q, got %q", "application/json", h)
-	}
-
-	var data *apiResponse
-	if err = json.Unmarshal([]byte(body), &data); err != nil {
-		t.Fatal("Error unmarshaling JSON body: ", err)
-	}
-
-	if data.Status != "success" {
-		t.Fatalf("Expected success status, got %q", &data.Status)
-	}
-
-	if string(data.Data.Result.Value.String()) != expected {
-		t.Fatalf("Expected result %v, got %v", expected, data.Data.Result.Value.String())
-	}
-}
-
-func queryURL(query string) string {
-	queryValues := &url.Values{
-		"query": []string{query},
-	}
-	return fmt.Sprintf("%s%s/query/?%s", baseURL, apiRoute, queryValues.Encode())
+	return values, err
 }
 
 func generateRemoteRequest(sample model.Sample) *remote.WriteRequest {
