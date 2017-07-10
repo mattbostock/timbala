@@ -49,42 +49,14 @@ func TestRemoteWrite(t *testing.T) {
 	}
 	testSample.Metric[model.MetricNameLabel] = "foo"
 
-	req := &remote.WriteRequest{
-		Timeseries: make([]*remote.TimeSeries, 0, 1),
-	}
-	ts := &remote.TimeSeries{
-		Labels: make([]*remote.LabelPair, 0, len(testSample.Metric)),
-	}
-	for k, v := range testSample.Metric {
-		ts.Labels = append(ts.Labels,
-			&remote.LabelPair{
-				Name:  string(k),
-				Value: string(v),
-			})
-	}
-	ts.Samples = []*remote.Sample{
-		{
-			Value:       float64(testSample.Value),
-			TimestampMs: int64(testSample.Timestamp),
-		},
-	}
-	req.Timeseries = append(req.Timeseries, ts)
-
-	data, err := proto.Marshal(req)
+	req := generateRemoteRequest(testSample)
+	resp, err := postWriteRequest(req)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	compressed := snappy.Encode(nil, data)
-	u := fmt.Sprintf("%s%s", baseURL, writeRoute)
-	httpResp, err := http.Post(u, "snappy", bytes.NewBuffer(compressed))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer httpResp.Body.Close()
-
-	if httpResp.StatusCode != 200 {
-		t.Fatalf("Expected HTTP status 200, got %d", httpResp.StatusCode)
+	if resp.StatusCode != 200 {
+		t.Fatalf("Expected HTTP status 200, got %d", resp.StatusCode)
 	}
 }
 
@@ -144,6 +116,47 @@ func queryURL(query string) string {
 		"query": []string{query},
 	}
 	return fmt.Sprintf("%s%s/query/?%s", baseURL, apiRoute, queryValues.Encode())
+}
+
+func generateRemoteRequest(sample model.Sample) *remote.WriteRequest {
+	req := &remote.WriteRequest{
+		Timeseries: make([]*remote.TimeSeries, 0, 1),
+	}
+	ts := &remote.TimeSeries{
+		Labels: make([]*remote.LabelPair, 0, len(sample.Metric)),
+	}
+	for k, v := range sample.Metric {
+		ts.Labels = append(ts.Labels,
+			&remote.LabelPair{
+				Name:  string(k),
+				Value: string(v),
+			})
+	}
+	ts.Samples = []*remote.Sample{
+		{
+			Value:       float64(sample.Value),
+			TimestampMs: int64(sample.Timestamp),
+		},
+	}
+	req.Timeseries = append(req.Timeseries, ts)
+	return req
+}
+
+func postWriteRequest(req *remote.WriteRequest) (*http.Response, error) {
+	data, err := proto.Marshal(req)
+	if err != nil {
+		return nil, err
+	}
+
+	compressed := snappy.Encode(nil, data)
+	u := fmt.Sprintf("%s%s", baseURL, writeRoute)
+	resp, err := http.Post(u, "snappy", bytes.NewBuffer(compressed))
+	if err != nil {
+		return nil, err
+	}
+	resp.Body.Close()
+
+	return resp, nil
 }
 
 func waitForServer(u string) error {
