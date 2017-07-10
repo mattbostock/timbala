@@ -1,5 +1,5 @@
 all: test testdocs build
-.PHONY: build savedeps servedocs test testdocs
+.PHONY: all build savedeps servedocs test testdocs
 
 MKDOCS_MATERIAL_VERSION=1.5.4
 
