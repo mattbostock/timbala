@@ -58,6 +58,39 @@ func TestRemoteWrite(t *testing.T) {
 	}
 }
 
+func TestRemoteWriteThenQueryBack(t *testing.T) {
+	name := time.Now().Format("test_2006_01_02T15_04_05")
+
+	testSample := model.Sample{
+		Metric:    make(model.Metric, 1),
+		Value:     1234,
+		Timestamp: model.Now(),
+	}
+	testSample.Metric[model.MetricNameLabel] = model.LabelValue(name)
+
+	req := generateRemoteRequest(testSample)
+	resp, err := postWriteRequest(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if resp.StatusCode != 200 {
+		t.Fatalf("Expected HTTP status 200, got %d", resp.StatusCode)
+	}
+
+	result, err := queryAPI(name, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expected := model.SampleValue(1234.0)
+
+	got := result.(model.Vector)[0].Value
+	if got != expected {
+		t.Fatalf("Expected %s, got %s", got, expected)
+	}
+}
+
 func TestMain(m *testing.M) {
 	flag.Parse()
 
