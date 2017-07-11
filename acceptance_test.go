@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -17,25 +16,24 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/mattbostock/athensdb/remote"
-	promAPI "github.com/prometheus/client_golang/api"
-	promAPIv1 "github.com/prometheus/client_golang/api/prometheus/v1"
+	helpers "github.com/mattbostock/athensdb/test_helpers"
 	"github.com/prometheus/common/model"
 )
 
-var baseURL string
+var httpBaseURL string
 
 func TestSimpleArithmeticQuery(t *testing.T) {
 	query := "1+1"
 	expected := "2"
 
-	result, err := queryAPI(query, time.Now())
+	result, err := helpers.QueryAPI(httpBaseURL, query, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	got := result.(*model.Scalar).Value.String()
 	if got != expected {
-		t.Fatalf("Expected %s, got %s", got, expected)
+		t.Fatalf("Expected %s, got %s", expected, got)
 	}
 }
 
@@ -78,7 +76,7 @@ func TestRemoteWriteThenQueryBack(t *testing.T) {
 		t.Fatalf("Expected HTTP status 200, got %d", resp.StatusCode)
 	}
 
-	result, err := queryAPI(name, time.Now())
+	result, err := helpers.QueryAPI(httpBaseURL, name, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +85,7 @@ func TestRemoteWriteThenQueryBack(t *testing.T) {
 
 	got := result.(model.Vector)[0].Value
 	if got != expected {
-		t.Fatalf("Expected %s, got %s", got, expected)
+		t.Fatalf("Expected %s, got %s", expected, got)
 	}
 }
 
@@ -97,33 +95,15 @@ func TestMain(m *testing.M) {
 	// Use localhost to avoid firewall warnings when running tests under OS X.
 	config.listenAddr = "localhost:9080"
 
-	baseURL = fmt.Sprintf("http://%s", config.listenAddr)
+	httpBaseURL = fmt.Sprintf("http://%s", config.listenAddr)
 	go main()
 
-	err := waitForServer(baseURL)
+	err := waitForServer(httpBaseURL)
 	if err != nil {
 		log.Fatal("Test setup failed:", err)
 	}
 
 	os.Exit(m.Run())
-}
-
-func queryAPI(query string, ts time.Time) (model.Value, error) {
-	conf := promAPI.Config{
-		Address: baseURL,
-	}
-	client, err := promAPI.NewClient(conf)
-	if err != nil {
-		return nil, err
-	}
-
-	api := promAPIv1.NewAPI(client)
-	values, err := api.Query(context.TODO(), query, ts)
-	if err != nil {
-		return nil, err
-	}
-
-	return values, err
 }
 
 func generateRemoteRequest(sample model.Sample) *remote.WriteRequest {
@@ -157,7 +137,7 @@ func postWriteRequest(req *remote.WriteRequest) (*http.Response, error) {
 	}
 
 	compressed := snappy.Encode(nil, data)
-	u := fmt.Sprintf("%s%s", baseURL, writeRoute)
+	u := fmt.Sprintf("%s%s", httpBaseURL, writeRoute)
 	resp, err := http.Post(u, "snappy", bytes.NewBuffer(compressed))
 	if err != nil {
 		return nil, err
