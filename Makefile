@@ -1,10 +1,16 @@
 all: test build
-.PHONY: all build savedeps servedocs test testdocs
+.PHONY: all build clean integration savedeps servedocs test testdocs
 
 MKDOCS_MATERIAL_VERSION=1.5.4
 
 build:
 	@go install ./...
+
+clean:
+	@docker-compose --file integration_tests/docker-compose.yml rm -f
+
+integration:
+	@docker-compose --file integration_tests/docker-compose.yml up --build --abort-on-container-exit --exit-code-from integration-tests
 
 savedeps:
 	@govendor add +external
