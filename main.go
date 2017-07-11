@@ -2,15 +2,19 @@ package main
 
 import (
 	"io/ioutil"
+	"net"
 	"net/http"
 	"os"
 	"sort"
+	"strconv"
+	"strings"
 	"time"
 
 	"golang.org/x/net/context"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/snappy"
+	"github.com/hashicorp/memberlist"
 	v1API "github.com/mattbostock/athensdb/api/v1"
 	"github.com/mattbostock/athensdb/remote"
 	"github.com/prometheus/common/log"
@@ -27,18 +31,54 @@ const (
 
 var config = struct {
 	listenAddr string
+	peerAddr   string
+	peers      []string
 }{
 	":9080",
+	":7946", // default used by memberlist
+	[]string{},
 }
 
 func init() {
 	if len(os.Getenv("ADDR")) > 0 {
 		config.listenAddr = os.Getenv("ADDR")
 	}
+
+	if len(os.Getenv("PEER_ADDR")) > 0 {
+		config.peerAddr = os.Getenv("PEER_ADDR")
+	}
+
+	if len(os.Getenv("PEERS")) > 0 {
+		config.peers = strings.Split(os.Getenv("PEERS"), ",")
+		for k, v := range config.peers {
+			config.peers[k] = strings.TrimSpace(v)
+		}
+	}
 }
 
 func main() {
-	// FIXME: Review tsdb options
+	// FIXME(mbostock): Consider using a non-local config for memberlist
+	memberConf := memberlist.DefaultLocalConfig()
+	peerHost, peerPort, _ := net.SplitHostPort(config.peerAddr)
+	bindPort, _ := strconv.Atoi(peerPort)
+	memberConf.BindAddr = peerHost
+	memberConf.BindPort = bindPort
+	memberConf.LogOutput = ioutil.Discard
+
+	list, err := memberlist.Create(memberConf)
+	if err != nil {
+		log.Fatal("Failed to configure cluster settings:", err)
+	}
+
+	_, err = list.Join(config.peers)
+	if err != nil {
+		log.Fatal("Failed to join the cluster: ", err)
+	}
+
+	members := list.Members()
+	log.Infof("Starting AthensDB node %s; peer address %s; API address %s", list.LocalNode(), config.peerAddr, config.listenAddr)
+	log.Infof("%d nodes in cluster: %s", len(members), members)
+
 	localStorage, err := tsdb.Open("data", nil, &tsdb.Options{
 		AppendableBlocks: 2,
 		MinBlockDuration: 2 * time.Hour,
@@ -46,8 +86,7 @@ func main() {
 		Retention:        15 * 24 * time.Hour,
 	})
 	if err != nil {
-		log.Errorf("Opening storage failed: %s", err)
-		os.Exit(1)
+		log.Fatalf("Opening storage failed: %s", err)
 	}
 
 	var (
