@@ -9,4 +9,6 @@ scrape_configs:
           - localhost:9090
 
 remote_write:
-  - url: http://athensdb:9080/receive
+  - url: http://athensdb_1:9080/receive
+  - url: http://athensdb_2:9080/receive
+  - url: http://athensdb_3:9080/receive

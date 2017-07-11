@@ -1,16 +1,37 @@
 version: '3.2'
 services:
-  athensdb:
+  athensdb_1:
     build: ../
     ports:
       - 9080:9080
+    links:
+      - athensdb_2
+      - athensdb_3
+    environment:
+      PEERS: athensdb_2,athensdb_3
+  athensdb_2:
+    build: ../
+    ports:
+      - 9081:9080
+  athensdb_3:
+    build: ../
+    ports:
+      - 9082:9080
+    environment:
+      PEERS: athensdb_1,athensdb_3
   prometheus:
     build: prometheus/
     links:
-      - athensdb
+      - athensdb_1
+      - athensdb_2
+      - athensdb_3
+    environment:
+      PEERS: athensdb_1,athensdb_2
   integration-tests:
     build:
       context: ../
       dockerfile: integration_tests/Dockerfile
     links:
-      - athensdb
+      - athensdb_1
+      - athensdb_2
+      - athensdb_3

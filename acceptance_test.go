@@ -94,6 +94,7 @@ func TestMain(m *testing.M) {
 
 	// Use localhost to avoid firewall warnings when running tests under OS X.
 	config.listenAddr = "localhost:9080"
+	config.peerAddr = "localhost:7946"
 
 	httpBaseURL = fmt.Sprintf("http://%s", config.listenAddr)
 	go main()
