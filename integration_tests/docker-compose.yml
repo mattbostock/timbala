@@ -8,3 +8,9 @@ services:
     build: prometheus/
     links:
       - athensdb
+  integration-tests:
+    build:
+      context: ../
+      dockerfile: integration_tests/Dockerfile
+    links:
+      - athensdb
