@@ -13,4 +13,4 @@ matrix:
     - tip
   fast_finish: true
 
-script: make test && make testdocs
+script: make test && make testdocs && make integration
