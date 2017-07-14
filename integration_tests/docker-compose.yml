@@ -2,6 +2,7 @@ version: '3.2'
 services:
   athensdb_1:
     build: ../
+    hostname: athensdb_1
     ports:
       - 9080:9080
     links:
@@ -11,10 +12,12 @@ services:
       PEERS: athensdb_2,athensdb_3
   athensdb_2:
     build: ../
+    hostname: athensdb_2
     ports:
       - 9081:9080
   athensdb_3:
     build: ../
+    hostname: athensdb_3
     ports:
       - 9082:9080
     environment:
@@ -27,11 +30,17 @@ services:
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
     links:
+      - load_balancer
+    environment:
+      PEERS: athensdb_1,athensdb_2
+  load_balancer:
+    image: nginx:stable-alpine
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    links:
       - athensdb_1
       - athensdb_2
       - athensdb_3
-    environment:
-      PEERS: athensdb_1,athensdb_2
   integration-tests:
     build:
       context: ../
@@ -40,3 +49,4 @@ services:
       - athensdb_1
       - athensdb_2
       - athensdb_3
+      - load_balancer
