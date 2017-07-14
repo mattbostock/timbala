@@ -6,7 +6,7 @@ EXPOSE 9080
 WORKDIR /go/src/github.com/mattbostock/athensdb
 COPY . /go/src/github.com/mattbostock/athensdb
 
-RUN apk add --update make && \
+RUN apk add --no-cache make && \
   make && \
   apk del make && \
   cd && \
