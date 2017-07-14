@@ -32,6 +32,11 @@ func TestPrometheusMetricsCanBeQueried(t *testing.T) {
 			}
 
 			expected := model.SampleValue(1)
+
+			if len(result.(model.Vector)) == 0 {
+				t.Fatalf("Got 0 results")
+			}
+
 			got := result.(model.Vector)[0].Value
 			if got != expected {
 				t.Fatalf("Expected %s, got %s", expected, got)
