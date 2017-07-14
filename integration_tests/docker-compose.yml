@@ -20,7 +20,12 @@ services:
     environment:
       PEERS: athensdb_1,athensdb_3
   prometheus:
-    build: prometheus/
+    image: prom/prometheus:v1.7.1
+    command:
+      - '-config.file=/etc/prometheus/prometheus.yml'
+      - '-storage.local.engine=none'
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
     links:
       - athensdb_1
       - athensdb_2
