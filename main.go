@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"net"
@@ -34,15 +35,18 @@ const (
 	httpHeaderInternalWrite = "X-AthensDB-Internal-Write-Version"
 )
 
-var config = struct {
-	listenAddr string
-	peerAddr   string
-	peers      []string
-}{
-	":9080",
-	":7946", // default used by memberlist
-	[]string{},
-}
+var (
+	config = struct {
+		listenAddr string
+		peerAddr   string
+		peers      []string
+	}{
+		":9080",
+		":7946", // default used by memberlist
+		[]string{},
+	}
+	version = "undefined"
+)
 
 func init() {
 	if len(os.Getenv("ADDR")) > 0 {
@@ -62,6 +66,15 @@ func init() {
 }
 
 func main() {
+	var v bool
+	flag.BoolVar(&v, "version", false, "prints current version")
+	flag.Parse()
+
+	if v {
+		fmt.Println(version)
+		os.Exit(0)
+	}
+
 	// FIXME(mbostock): Consider using a non-local config for memberlist
 	memberConf := memberlist.DefaultLocalConfig()
 	peerHost, peerPort, _ := net.SplitHostPort(config.peerAddr)

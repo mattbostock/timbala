@@ -2,9 +2,10 @@ all: test build
 .PHONY: all build clean integration savedeps servedocs test testdocs
 
 MKDOCS_MATERIAL_VERSION=1.5.4
+VERSION := $(shell git describe --always | tr -d '\n'; test -z "`git status --porcelain`" || echo '-dirty')
 
 build:
-	@go install ./...
+	@go install -ldflags "-X main.version=$(VERSION)" ./...
 
 clean:
 	@docker-compose --file integration_tests/docker-compose.yml rm -f
