@@ -105,7 +105,7 @@ func TestMain(m *testing.M) {
 
 	err := waitForServer(httpBaseURL)
 	if err != nil {
-		log.Fatal("Test setup failed:", err)
+		log.Fatal("Test setup failed: ", err)
 	}
 
 	os.Exit(m.Run())
