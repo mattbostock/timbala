@@ -102,7 +102,7 @@ func main() {
 	var api = v1API.NewAPI(queryEngine, localStorage)
 	api.Register(router.WithPrefix(apiRoute))
 
-	router.Post("/receive", func(w http.ResponseWriter, r *http.Request) {
+	router.Post(writeRoute, func(w http.ResponseWriter, r *http.Request) {
 		compressed, err := ioutil.ReadAll(r.Body)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
