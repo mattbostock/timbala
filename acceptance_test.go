@@ -5,7 +5,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -17,6 +16,7 @@ import (
 	"github.com/golang/snappy"
 	"github.com/mattbostock/athensdb/remote"
 	helpers "github.com/mattbostock/athensdb/test_helpers"
+	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
 )
 
