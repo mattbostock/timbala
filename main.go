@@ -127,6 +127,7 @@ func main() {
 		if err != nil {
 			// FIXME: Make error more useful
 			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
 		}
 
 		for _, ts := range req.Timeseries {
