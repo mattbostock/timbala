@@ -25,6 +25,8 @@ func TestPrometheusMetricsCanBeQueried(t *testing.T) {
 	for _, a := range athensDBAddr {
 		wg.Add(1)
 		go func(addr string) {
+			defer wg.Done()
+
 			query := `prometheus_build_info`
 			result, err := helpers.QueryAPI(addr, query, time.Now())
 			if err != nil {
@@ -41,7 +43,6 @@ func TestPrometheusMetricsCanBeQueried(t *testing.T) {
 			if got != expected {
 				t.Fatalf("Expected %s, got %s", expected, got)
 			}
-			wg.Done()
 		}(a)
 	}
 
