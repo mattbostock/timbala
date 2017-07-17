@@ -1,4 +1,4 @@
-FROM golang:1.8-alpine
+FROM golang:1.8
 MAINTAINER Matt Bostock <matt@mattbostock.com>
 
 EXPOSE 9080
@@ -6,9 +6,10 @@ EXPOSE 9080
 WORKDIR /go/src/github.com/mattbostock/athensdb
 COPY . /go/src/github.com/mattbostock/athensdb
 
-RUN apk add --no-cache git make && \
+RUN apt-get update && \
+  apt-get install -y git make && \
   make && \
-  apk del make && \
+  apt-get purge -y git make && \
   cd && \
   rm -rf /go/src
 
