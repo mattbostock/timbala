@@ -69,15 +69,6 @@ func main() {
 		log.Fatal("Failed to configure cluster settings:", err)
 	}
 
-	_, err = list.Join(config.peers)
-	if err != nil {
-		log.Fatal("Failed to join the cluster: ", err)
-	}
-
-	members := list.Members()
-	log.Infof("Starting AthensDB node %s; peer address %s; API address %s", list.LocalNode(), config.peerAddr, config.listenAddr)
-	log.Infof("%d nodes in cluster: %s", len(members), members)
-
 	localStorage, err := tsdb.Open("data", nil, &tsdb.Options{
 		AppendableBlocks: 2,
 		MinBlockDuration: 2 * time.Hour,
@@ -146,5 +137,20 @@ func main() {
 		}
 	})
 
-	log.Fatal(http.ListenAndServe(config.listenAddr, router))
+	_, err = list.Join(config.peers)
+	if err != nil {
+		log.Fatal("Failed to join the cluster: ", err)
+	}
+
+	// FIXME catch errors
+	var errChan chan error
+	go func() {
+		errChan <- http.ListenAndServe(config.listenAddr, router)
+	}()
+
+	members := list.Members()
+	log.Infof("Starting AthensDB node %s; peer address %s; API address %s", list.LocalNode(), config.peerAddr, config.listenAddr)
+	log.Infof("%d nodes in cluster: %s", len(members), members)
+
+	log.Fatal(<-errChan)
 }
