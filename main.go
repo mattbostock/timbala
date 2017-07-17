@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"fmt"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -8,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/golang/protobuf/proto"
@@ -21,11 +24,14 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage/tsdb"
 	"golang.org/x/net/context"
+	"golang.org/x/net/context/ctxhttp"
 )
 
 const (
 	apiRoute   = "/api/v1"
 	writeRoute = "/receive"
+
+	httpHeaderInternalWrite = "X-AthensDB-Internal-Write-Version"
 )
 
 var config = struct {
@@ -119,6 +125,7 @@ func main() {
 		}
 		defer appender.Commit()
 
+		var samples uint32
 		for _, ts := range req.Timeseries {
 			m := make(labels.Labels, 0, len(ts.Labels))
 			for _, l := range ts.Labels {
@@ -132,7 +139,61 @@ func main() {
 			for _, s := range ts.Samples {
 				// FIXME: Look at using AddFast
 				appender.Add(m, s.TimestampMs, s.Value)
+				samples++
 			}
+		}
+
+		// This is an internal write, so don't replicate it to other nodes
+		if r.Header.Get(httpHeaderInternalWrite) != "" {
+			log.Debugf("Received %d samples from another node in the cluster", samples)
+			return
+		}
+
+		var wg sync.WaitGroup
+		nodes := list.Members()
+		var wgErrChan = make(chan error, len(nodes))
+		for _, node := range nodes {
+			if node.String() == list.LocalNode().String() {
+				log.Debugf("Skipping local node %s", node)
+				continue
+			}
+
+			wg.Add(1)
+			go func(n *memberlist.Node) {
+				defer wg.Done()
+
+				log.Debugf("Writing %d samples to %s", samples, n)
+
+				// FIXME Remove hardcoded port, use advertised host from shared state
+				nodeReq, err := http.NewRequest("POST", "http://"+n.String()+":9080"+writeRoute, bytes.NewBuffer(compressed))
+				if err != nil {
+					wgErrChan <- err
+					fmt.Println(err)
+					return
+				}
+				nodeReq.Header.Add("Content-Encoding", "snappy")
+				nodeReq.Header.Set("Content-Type", "application/x-protobuf")
+				nodeReq.Header.Set("X-Prometheus-Remote-Write-Version", "0.1.0")
+				nodeReq.Header.Set(httpHeaderInternalWrite, "0.0.1")
+
+				// FIXME set timeout using context
+				httpResp, err := ctxhttp.Do(context.TODO(), http.DefaultClient, nodeReq)
+				if err != nil {
+					wgErrChan <- err
+					fmt.Println(err)
+					return
+				}
+				defer httpResp.Body.Close()
+			}(node)
+		}
+		// FIXME cancel requests if one fails
+		wg.Wait()
+
+		select {
+		case err := <-wgErrChan:
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		default:
 		}
 	})
 
