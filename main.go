@@ -112,13 +112,12 @@ func main() {
 		}
 
 		appender, err := localStorage.Appender()
-		defer appender.Commit()
-
 		if err != nil {
 			// FIXME: Make error more useful
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		defer appender.Commit()
 
 		for _, ts := range req.Timeseries {
 			m := make(labels.Labels, 0, len(ts.Labels))
