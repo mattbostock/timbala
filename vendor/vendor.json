@@ -325,6 +325,12 @@
 			"revisionTime": "2017-04-13T17:15:43Z"
 		},
 		{
+			"checksumSHA1": "WHc3uByvGaMcnSoI21fhzYgbOgg=",
+			"path": "golang.org/x/net/context/ctxhttp",
+			"revision": "5602c733f70afc6dcec6766be0d5034d4c4f14de",
+			"revisionTime": "2017-04-13T17:15:43Z"
+		},
+		{
 			"checksumSHA1": "S0DP7Pn7sZUmXc55IzZnNvERu6s=",
 			"origin": "github.com/prometheus/prometheus/vendor/golang.org/x/sync/errgroup",
 			"path": "golang.org/x/sync/errgroup",
