@@ -10,8 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/net/context"
-
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/hashicorp/memberlist"
@@ -22,6 +20,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage/tsdb"
+	"golang.org/x/net/context"
 )
 
 const (
