@@ -30,18 +30,21 @@ func TestPrometheusMetricsCanBeQueried(t *testing.T) {
 			query := `prometheus_build_info`
 			result, err := helpers.QueryAPI(addr, query, time.Now())
 			if err != nil {
-				t.Fatal(err)
+				t.Error(err)
+				return
 			}
 
 			expected := model.SampleValue(1)
 
 			if len(result.(model.Vector)) == 0 {
-				t.Fatalf("Got 0 results")
+				t.Error("Got 0 results")
+				return
 			}
 
 			got := result.(model.Vector)[0].Value
 			if got != expected {
-				t.Fatalf("Expected %s, got %s", expected, got)
+				t.Error("Expected %s, got %s", expected, got)
+				return
 			}
 		}(a)
 	}
