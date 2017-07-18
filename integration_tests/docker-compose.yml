@@ -1,4 +1,8 @@
 version: '3.2'
+
+networks:
+  unreliable-net:
+
 services:
   athensdb_1:
     build: ../
@@ -12,6 +16,8 @@ services:
       PEERS: athensdb_2,athensdb_3
     command:
       - '-log.level=debug'
+    networks:
+      - unreliable-net
   athensdb_2:
     build: ../
     hostname: athensdb_2
@@ -19,6 +25,8 @@ services:
       - 9081:9080
     command:
       - '-log.level=debug'
+    networks:
+      - unreliable-net
   athensdb_3:
     build: ../
     hostname: athensdb_3
@@ -28,6 +36,8 @@ services:
       PEERS: athensdb_1,athensdb_3
     command:
       - '-log.level=debug'
+    networks:
+      - unreliable-net
   prometheus:
     image: prom/prometheus:v1.7.1
     command:
@@ -39,6 +49,8 @@ services:
       - load_balancer
     environment:
       PEERS: athensdb_1,athensdb_2
+    networks:
+      - unreliable-net
   load_balancer:
     image: nginx:stable-alpine
     volumes:
@@ -47,6 +59,8 @@ services:
       - athensdb_1
       - athensdb_2
       - athensdb_3
+    networks:
+      - unreliable-net
   integration-tests:
     build:
       context: ../
@@ -56,3 +70,14 @@ services:
       - athensdb_2
       - athensdb_3
       - load_balancer
+    networks:
+      - unreliable-net
+  gremlins-fault-injection:
+    image: qualimente/gremlins
+    volumes:
+      - ./profiles:/app/gremlins/profiles
+    command: gremlins -m gremlins.profiles.faulty -p faulty.profile
+    pid: host # FIXME: really?
+    network_mode: "service:athensdb_1"
+    cap_add:
+      - NET_ADMIN
