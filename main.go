@@ -5,19 +5,17 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
-	"net"
 	"net/http"
 	"os"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/snappy"
-	"github.com/hashicorp/memberlist"
 	v1API "github.com/mattbostock/athensdb/internal/api/v1"
+	"github.com/mattbostock/athensdb/internal/cluster"
 	"github.com/mattbostock/athensdb/internal/remote"
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/route"
@@ -73,19 +71,6 @@ func main() {
 	if v {
 		fmt.Println(version)
 		os.Exit(0)
-	}
-
-	// FIXME(mbostock): Consider using a non-local config for memberlist
-	memberConf := memberlist.DefaultLocalConfig()
-	peerHost, peerPort, _ := net.SplitHostPort(config.peerAddr)
-	bindPort, _ := strconv.Atoi(peerPort)
-	memberConf.BindAddr = peerHost
-	memberConf.BindPort = bindPort
-	memberConf.LogOutput = ioutil.Discard
-
-	list, err := memberlist.Create(memberConf)
-	if err != nil {
-		log.Fatal("Failed to configure cluster settings:", err)
 	}
 
 	localStorage, err := tsdb.Open("data", nil, &tsdb.Options{
@@ -163,22 +148,23 @@ func main() {
 		}
 
 		var wg sync.WaitGroup
-		nodes := list.Members()
+		// FIXME: Avoid panic if the cluster is not yet initialised
+		nodes := cluster.Nodes()
 		var wgErrChan = make(chan error, len(nodes))
 		for _, node := range nodes {
-			if node.String() == list.LocalNode().String() {
+			if node.Name() == cluster.LocalNode().Name() {
 				log.Debugf("Skipping local node %s", node)
 				continue
 			}
 
 			wg.Add(1)
-			go func(n *memberlist.Node) {
+			go func(n *cluster.Node) {
 				defer wg.Done()
 
 				log.Debugf("Writing %d samples to %s", samples, n)
 
 				// FIXME Remove hardcoded port, use advertised host from shared state
-				nodeReq, err := http.NewRequest("POST", "http://"+n.String()+":9080"+writeRoute, bytes.NewBuffer(compressed))
+				nodeReq, err := http.NewRequest("POST", "http://"+n.Name()+":9080"+writeRoute, bytes.NewBuffer(compressed))
 				if err != nil {
 					wgErrChan <- err
 					fmt.Println(err)
@@ -210,20 +196,14 @@ func main() {
 		}
 	})
 
-	_, err = list.Join(config.peers)
-	if err != nil {
+	if err := cluster.Join(&cluster.Config{
+		BindAddr: config.peerAddr,
+		Peers:    config.peers,
+	}); err != nil {
 		log.Fatal("Failed to join the cluster: ", err)
 	}
 
-	// FIXME catch errors
-	var errChan chan error
-	go func() {
-		errChan <- http.ListenAndServe(config.listenAddr, router)
-	}()
-
-	members := list.Members()
-	log.Infof("Starting AthensDB node %s; peer address %s; API address %s", list.LocalNode(), config.peerAddr, config.listenAddr)
-	log.Infof("%d nodes in cluster: %s", len(members), members)
-
-	log.Fatal(<-errChan)
+	log.Infof("Starting AthensDB node %s; peer address %s; API address %s", cluster.LocalNode(), config.peerAddr, config.listenAddr)
+	log.Infof("%d nodes in cluster: %s", len(cluster.Nodes()), cluster.Nodes())
+	log.Fatal(http.ListenAndServe(config.listenAddr, router))
 }
