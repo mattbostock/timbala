@@ -8,10 +8,10 @@ build:
 	@go install -ldflags "-X main.version=$(VERSION)" ./...
 
 clean:
-	@docker-compose --file integration_tests/docker-compose.yml rm -f
+	@docker-compose --file internal/integration/docker-compose.yml rm -f
 
 integration:
-	@docker-compose --file integration_tests/docker-compose.yml up --build --abort-on-container-exit --exit-code-from integration-tests
+	@docker-compose --file internal/integration/docker-compose.yml up --build --abort-on-container-exit --exit-code-from integration_tests
 
 savedeps:
 	@govendor add +external
