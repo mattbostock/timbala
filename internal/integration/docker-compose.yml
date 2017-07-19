@@ -1,7 +1,7 @@
 version: '3.2'
 services:
   athensdb_1:
-    build: ../
+    build: ../../
     hostname: athensdb_1
     ports:
       - 9080:9080
@@ -13,14 +13,14 @@ services:
     command:
       - '-log.level=debug'
   athensdb_2:
-    build: ../
+    build: ../../
     hostname: athensdb_2
     ports:
       - 9081:9080
     command:
       - '-log.level=debug'
   athensdb_3:
-    build: ../
+    build: ../../
     hostname: athensdb_3
     ports:
       - 9082:9080
@@ -47,10 +47,10 @@ services:
       - athensdb_1
       - athensdb_2
       - athensdb_3
-  integration-tests:
+  integration_tests:
     build:
-      context: ../
-      dockerfile: integration_tests/Dockerfile
+      context: ../../
+      dockerfile: internal/integration/Dockerfile
     links:
       - athensdb_1
       - athensdb_2

@@ -14,8 +14,8 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/snappy"
-	"github.com/mattbostock/athensdb/remote"
-	helpers "github.com/mattbostock/athensdb/test_helpers"
+	"github.com/mattbostock/athensdb/internal/remote"
+	"github.com/mattbostock/athensdb/internal/testutil"
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
 )
@@ -26,7 +26,7 @@ func TestSimpleArithmeticQuery(t *testing.T) {
 	query := "1+1"
 	expected := "2"
 
-	result, err := helpers.QueryAPI(httpBaseURL, query, time.Now())
+	result, err := testutil.QueryAPI(httpBaseURL, query, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +76,7 @@ func TestRemoteWriteThenQueryBack(t *testing.T) {
 		t.Fatalf("Expected HTTP status 200, got %d", resp.StatusCode)
 	}
 
-	result, err := helpers.QueryAPI(httpBaseURL, name, time.Now())
+	result, err := testutil.QueryAPI(httpBaseURL, name, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}

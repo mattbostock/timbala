@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	helpers "github.com/mattbostock/athensdb/test_helpers"
+	"github.com/mattbostock/athensdb/internal/testutil"
 	"github.com/prometheus/common/model"
 )
 
@@ -28,7 +28,7 @@ func TestPrometheusMetricsCanBeQueried(t *testing.T) {
 			defer wg.Done()
 
 			query := `prometheus_build_info`
-			result, err := helpers.QueryAPI(addr, query, time.Now())
+			result, err := testutil.QueryAPI(addr, query, time.Now())
 			if err != nil {
 				t.Error(err)
 				return
