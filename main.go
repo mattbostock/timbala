@@ -2,28 +2,26 @@ package main
 
 import (
 	"bytes"
-	"flag"
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	"os"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
+	log "github.com/Sirupsen/logrus"
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/snappy"
 	v1API "github.com/mattbostock/athensdb/internal/api/v1"
 	"github.com/mattbostock/athensdb/internal/cluster"
 	"github.com/mattbostock/athensdb/internal/remote"
-	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/route"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage/tsdb"
 	"golang.org/x/net/context"
 	"golang.org/x/net/context/ctxhttp"
+	"gopkg.in/alecthomas/kingpin.v2"
 )
 
 const (
@@ -34,45 +32,42 @@ const (
 )
 
 var (
-	config = struct {
+	config struct {
 		listenAddr string
 		peerAddr   string
 		peers      []string
-	}{
-		":9080",
-		":7946", // default used by memberlist
-		[]string{},
 	}
 	version = "undefined"
 )
 
 func init() {
-	if len(os.Getenv("ADDR")) > 0 {
-		config.listenAddr = os.Getenv("ADDR")
-	}
+	kingpin.Flag(
+		"api-bind-addr",
+		"host:port to bind to for HTTP API",
+	).Default(":9080").StringVar(&config.listenAddr)
+	kingpin.Flag(
+		"peer-bind-addr",
+		"host:port to bind to for cluster communication",
+	).Default(":7946").StringVar(&config.peerAddr)
+	kingpin.Flag(
+		"peers",
+		"List of peers to connect to",
+	).StringsVar(&config.peers)
+	level := kingpin.Flag(
+		"log-level",
+		"Log level",
+	).Default(log.InfoLevel.String()).Enum("debug", "info", "warn", "panic", "fatal")
+	kingpin.Version(version).DefaultEnvars()
+	kingpin.Parse()
 
-	if len(os.Getenv("PEER_ADDR")) > 0 {
-		config.peerAddr = os.Getenv("PEER_ADDR")
+	lvl, err := log.ParseLevel(*level)
+	if err != nil {
+		kingpin.Fatalf("could not parse log level %q", *level)
 	}
-
-	if len(os.Getenv("PEERS")) > 0 {
-		config.peers = strings.Split(os.Getenv("PEERS"), ",")
-		for k, v := range config.peers {
-			config.peers[k] = strings.TrimSpace(v)
-		}
-	}
+	log.SetLevel(lvl)
 }
 
 func main() {
-	var v bool
-	flag.BoolVar(&v, "version", false, "prints current version")
-	flag.Parse()
-
-	if v {
-		fmt.Println(version)
-		os.Exit(0)
-	}
-
 	localStorage, err := tsdb.Open("data", nil, &tsdb.Options{
 		AppendableBlocks: 2,
 		MinBlockDuration: 2 * time.Hour,
