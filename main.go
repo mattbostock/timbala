@@ -25,6 +25,9 @@ import (
 )
 
 const (
+	defaultAPIAddr  = ":9080"
+	defaultPeerAddr = ":7946"
+
 	apiRoute   = "/api/v1"
 	writeRoute = "/receive"
 
@@ -44,11 +47,11 @@ func init() {
 	kingpin.Flag(
 		"api-bind-addr",
 		"host:port to bind to for HTTP API",
-	).Default(":9080").StringVar(&config.listenAddr)
+	).Default(defaultAPIAddr).StringVar(&config.listenAddr)
 	kingpin.Flag(
 		"peer-bind-addr",
 		"host:port to bind to for cluster communication",
-	).Default(":7946").StringVar(&config.peerAddr)
+	).Default(defaultPeerAddr).StringVar(&config.peerAddr)
 	kingpin.Flag(
 		"peers",
 		"List of peers to connect to",
