@@ -8,26 +8,26 @@ services:
     links:
       - athensdb_2
       - athensdb_3
-    environment:
-      PEERS: athensdb_2,athensdb_3
     command:
-      - '-log.level=debug'
+      - '--log-level=debug'
+      - '--peers=athensdb_2'
+      - '--peers=athensdb_3'
   athensdb_2:
     build: ../../
     hostname: athensdb_2
     ports:
       - 9081:9080
     command:
-      - '-log.level=debug'
+      - '--log-level=debug'
   athensdb_3:
     build: ../../
     hostname: athensdb_3
     ports:
       - 9082:9080
-    environment:
-      PEERS: athensdb_1,athensdb_3
     command:
-      - '-log.level=debug'
+      - '--log-level=debug'
+      - '--peers=athensdb_1'
+      - '--peers=athensdb_3'
   prometheus:
     image: prom/prometheus:v1.7.1
     command:

@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"errors"
-	"flag"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -12,11 +11,11 @@ import (
 	"testing"
 	"time"
 
+	log "github.com/Sirupsen/logrus"
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/mattbostock/athensdb/internal/remote"
 	"github.com/mattbostock/athensdb/internal/testutil"
-	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
 )
 
@@ -94,8 +93,6 @@ func TestRemoteWriteThenQueryBack(t *testing.T) {
 }
 
 func TestMain(m *testing.M) {
-	flag.Parse()
-
 	// Use localhost to avoid firewall warnings when running tests under OS X.
 	config.listenAddr = "localhost:9080"
 	config.peerAddr = "localhost:7946"
