@@ -165,7 +165,6 @@ func main() {
 				nodeReq, err := http.NewRequest("POST", "http://"+n.Name()+":9080"+writeRoute, bytes.NewBuffer(compressed))
 				if err != nil {
 					wgErrChan <- err
-					fmt.Println(err)
 					return
 				}
 				nodeReq.Header.Add("Content-Encoding", "snappy")
@@ -177,7 +176,6 @@ func main() {
 				httpResp, err := ctxhttp.Do(context.TODO(), http.DefaultClient, nodeReq)
 				if err != nil {
 					wgErrChan <- err
-					fmt.Println(err)
 					return
 				}
 				defer httpResp.Body.Close()
