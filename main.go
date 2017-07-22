@@ -47,7 +47,7 @@ var (
 	version = "undefined"
 )
 
-func init() {
+func main() {
 	kingpin.Flag(
 		"http-advertise-addr",
 		"host:port to advertise to other nodes for HTTP",
@@ -97,9 +97,7 @@ func init() {
 		kingpin.Fatalf("could not parse log level %q", *level)
 	}
 	log.SetLevel(lvl)
-}
 
-func main() {
 	localStorage, err := tsdb.Open("data", nil, &tsdb.Options{
 		AppendableBlocks: 2,
 		MinBlockDuration: 2 * time.Hour,
