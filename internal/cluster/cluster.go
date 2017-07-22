@@ -1,15 +1,16 @@
 package cluster
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net"
-	"strconv"
 
 	"github.com/hashicorp/memberlist"
 )
 
 var c = struct {
+	c  *Config
 	d  *delegate
 	ml *memberlist.Memberlist
 }{
@@ -17,19 +18,25 @@ var c = struct {
 }
 
 type Config struct {
-	AdvertiseAddr string
-	BindAddr      string
-	Peers         []string
+	HTTPAdvertiseAddr net.TCPAddr
+	HTTPBindAddr      net.TCPAddr
+	PeerAdvertiseAddr net.TCPAddr
+	PeerBindAddr      net.TCPAddr
+	Peers             []string
 }
 
 func Join(config *Config) error {
 	// FIXME(mbostock): Consider using a non-local config for memberlist
 	memberConf := memberlist.DefaultLocalConfig()
-	advHost, advPort, _ := net.SplitHostPort(config.BindAddr)
-	bindPort, _ := strconv.Atoi(advPort)
-	memberConf.BindAddr = advHost
-	memberConf.BindPort = bindPort
+
+	memberConf.AdvertiseAddr = config.PeerAdvertiseAddr.IP.String()
+	memberConf.AdvertisePort = config.PeerAdvertiseAddr.Port
+	memberConf.BindAddr = config.PeerBindAddr.IP.String()
+	memberConf.BindPort = config.PeerBindAddr.Port
+
+	memberConf.Delegate = c.d
 	memberConf.LogOutput = ioutil.Discard
+	c.c = config
 
 	var err error
 	if c.ml, err = memberlist.Create(memberConf); err != nil {
@@ -43,11 +50,23 @@ type Node struct {
 	mln *memberlist.Node
 }
 
+func (n *Node) meta() (m nodeMeta, err error) {
+	err = json.Unmarshal(n.mln.Meta, &m)
+	return
+}
+
 func (n *Node) Name() string {
 	return n.mln.Name
 }
 func (n *Node) Addr() string {
-	return fmt.Sprintf("%s:%d", n.mln.Addr.String(), n.mln.Port)
+	return n.mln.Address()
+}
+func (n *Node) HTTPAddr() (string, error) {
+	m, err := n.meta()
+	if err != nil {
+		return "", err
+	}
+	return m.HTTPAddr, nil
 }
 func (n *Node) String() string {
 	return n.Name()
@@ -73,21 +92,25 @@ func Nodes() (nodes []*Node) {
 type delegate struct{}
 
 func (d *delegate) NodeMeta(limit int) []byte {
-	panic("not implemented")
+	// FIXME respect limit
+	j, _ := json.Marshal(&nodeMeta{
+		HTTPAddr: c.c.HTTPAdvertiseAddr.String(),
+	})
+	return j
 }
 
-func (d *delegate) NotifyMsg([]byte) {
-	panic("not implemented")
-}
+func (d *delegate) NotifyMsg([]byte) {}
 
 func (d *delegate) GetBroadcasts(overhead int, limit int) [][]byte {
-	panic("not implemented")
+	return [][]byte{}
 }
 
 func (d *delegate) LocalState(join bool) []byte {
-	panic("not implemented")
+	return []byte{}
 }
 
-func (d *delegate) MergeRemoteState(buf []byte, join bool) {
-	panic("not implemented")
+func (d *delegate) MergeRemoteState(buf []byte, join bool) {}
+
+type nodeMeta struct {
+	HTTPAddr string `json:http_addr`
 }
