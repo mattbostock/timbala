@@ -60,8 +60,13 @@ func init() {
 		"log-level",
 		"Log level",
 	).Default(log.InfoLevel.String()).Enum("debug", "info", "warn", "panic", "fatal")
-	kingpin.Version(version).DefaultEnvars()
-	kingpin.Parse()
+
+	_, err := kingpin.Version(version).
+		DefaultEnvars().
+		Parse(os.Args[1:])
+	if err != nil {
+		logFlagFatal(err)
+	}
 
 	lvl, err := log.ParseLevel(*level)
 	if err != nil {
@@ -202,4 +207,8 @@ func main() {
 	log.Infof("Starting AthensDB node %s; peer address %s; API address %s", cluster.LocalNode(), config.peerAddr, config.listenAddr)
 	log.Infof("%d nodes in cluster: %s", len(cluster.Nodes()), cluster.Nodes())
 	log.Fatal(http.ListenAndServe(config.listenAddr, router))
+}
+
+func logFlagFatal(v ...interface{}) {
+	log.Fatalf("%s: error: %s", os.Args[0], fmt.Sprint(v...))
 }
