@@ -3,8 +3,6 @@ services:
   athensdb_1:
     build: ../../
     hostname: athensdb_1
-    ports:
-      - 9080:9080
     links:
       - athensdb_2
       - athensdb_3
@@ -15,15 +13,11 @@ services:
   athensdb_2:
     build: ../../
     hostname: athensdb_2
-    ports:
-      - 9081:9080
     command:
       - '--log-level=debug'
   athensdb_3:
     build: ../../
     hostname: athensdb_3
-    ports:
-      - 9082:9080
     command:
       - '--log-level=debug'
       - '--peers=athensdb_1'
