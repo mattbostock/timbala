@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"net/http"
+	"os"
 	"sort"
 	"sync"
 	"time"
@@ -25,8 +27,8 @@ import (
 )
 
 const (
-	defaultAPIAddr  = ":9080"
-	defaultPeerAddr = ":7946"
+	defaultHTTPAddr = "localhost:9080"
+	defaultPeerAddr = "localhost:7946"
 
 	apiRoute   = "/api/v1"
 	writeRoute = "/receive"
@@ -36,26 +38,41 @@ const (
 
 var (
 	config struct {
-		listenAddr string
-		peerAddr   string
-		peers      []string
+		httpAdvertiseAddr *net.TCPAddr
+		httpBindAddr      *net.TCPAddr
+		peerAdvertiseAddr *net.TCPAddr
+		peerBindAddr      *net.TCPAddr
+		peers             []string
 	}
 	version = "undefined"
 )
 
 func init() {
 	kingpin.Flag(
-		"api-bind-addr",
-		"host:port to bind to for HTTP API",
-	).Default(defaultAPIAddr).StringVar(&config.listenAddr)
+		"http-advertise-addr",
+		"host:port to advertise to other nodes for HTTP",
+	).Default(defaultHTTPAddr).TCPVar(&config.httpAdvertiseAddr)
+
+	kingpin.Flag(
+		"http-bind-addr",
+		"host:port to bind to for HTTP",
+	).Default(defaultHTTPAddr).TCPVar(&config.httpBindAddr)
+
+	kingpin.Flag(
+		"peer-advertise-addr",
+		"host:port to advertise to other nodes for cluster communication",
+	).Default(defaultPeerAddr).TCPVar(&config.peerAdvertiseAddr)
+
 	kingpin.Flag(
 		"peer-bind-addr",
 		"host:port to bind to for cluster communication",
-	).Default(defaultPeerAddr).StringVar(&config.peerAddr)
+	).Default(defaultPeerAddr).TCPVar(&config.peerBindAddr)
+
 	kingpin.Flag(
 		"peers",
 		"List of peers to connect to",
 	).StringsVar(&config.peers)
+
 	level := kingpin.Flag(
 		"log-level",
 		"Log level",
@@ -66,6 +83,13 @@ func init() {
 		Parse(os.Args[1:])
 	if err != nil {
 		logFlagFatal(err)
+	}
+
+	if config.httpAdvertiseAddr.IP == nil || config.httpAdvertiseAddr.IP.IsUnspecified() {
+		logFlagFatal("must specify host or IP for --http--advertise-addr")
+	}
+	if config.peerAdvertiseAddr.IP == nil || config.peerAdvertiseAddr.IP.IsUnspecified() {
+		logFlagFatal("must specify host or IP for --peer--advertise-addr")
 	}
 
 	lvl, err := log.ParseLevel(*level)
@@ -166,8 +190,13 @@ func main() {
 
 				log.Debugf("Writing %d samples to %s", samples, n)
 
-				// FIXME Remove hardcoded port, use advertised host from shared state
-				nodeReq, err := http.NewRequest("POST", "http://"+n.Name()+":9080"+writeRoute, bytes.NewBuffer(compressed))
+				httpAddr, err := n.HTTPAddr()
+				if err != nil {
+					wgErrChan <- err
+					return
+				}
+				apiURL := fmt.Sprintf("%s%s%s", "http://", httpAddr, writeRoute)
+				nodeReq, err := http.NewRequest("POST", apiURL, bytes.NewBuffer(compressed))
 				if err != nil {
 					wgErrChan <- err
 					return
@@ -198,15 +227,20 @@ func main() {
 	})
 
 	if err := cluster.Join(&cluster.Config{
-		BindAddr: config.peerAddr,
-		Peers:    config.peers,
+		HTTPAdvertiseAddr: *config.httpAdvertiseAddr,
+		HTTPBindAddr:      *config.httpBindAddr,
+		PeerAdvertiseAddr: *config.peerAdvertiseAddr,
+		PeerBindAddr:      *config.peerBindAddr,
+		Peers:             config.peers,
 	}); err != nil {
 		log.Fatal("Failed to join the cluster: ", err)
 	}
 
-	log.Infof("Starting AthensDB node %s; peer address %s; API address %s", cluster.LocalNode(), config.peerAddr, config.listenAddr)
+	log.Infof("starting AthensDB node %s", cluster.LocalNode())
+	log.Infof("binding to %s for peer gossip; %s for HTTP", config.peerBindAddr, config.httpBindAddr)
+	log.Infof("advertising to cluster as %s for peer gossip; %s for HTTP", config.peerAdvertiseAddr, config.httpAdvertiseAddr)
 	log.Infof("%d nodes in cluster: %s", len(cluster.Nodes()), cluster.Nodes())
-	log.Fatal(http.ListenAndServe(config.listenAddr, router))
+	log.Fatal(http.ListenAndServe(config.httpBindAddr.String(), router))
 }
 
 func logFlagFatal(v ...interface{}) {
