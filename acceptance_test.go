@@ -17,6 +17,7 @@ import (
 	"github.com/golang/snappy"
 	"github.com/mattbostock/athensdb/internal/remote"
 	"github.com/mattbostock/athensdb/internal/testutil"
+	"github.com/mattbostock/athensdb/internal/write"
 	"github.com/prometheus/common/model"
 )
 
@@ -140,7 +141,7 @@ func postWriteRequest(req *remote.WriteRequest) (*http.Response, error) {
 	}
 
 	compressed := snappy.Encode(nil, data)
-	u := fmt.Sprintf("%s%s", httpBaseURL, writeRoute)
+	u := fmt.Sprintf("%s%s", httpBaseURL, write.Route)
 	resp, err := http.Post(u, "snappy", bytes.NewBuffer(compressed))
 	if err != nil {
 		return nil, err
