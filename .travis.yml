@@ -13,7 +13,11 @@ matrix:
     - tip
   fast_finish: true
 
+install:
+  - go get github.com/kardianos/govendor
+
 script:
+  - make testdeps
   - make test
   - make testdocs
   - make integration
