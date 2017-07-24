@@ -9,12 +9,9 @@ import (
 	"github.com/hashicorp/memberlist"
 )
 
-var c = struct {
+var c struct {
 	c  *Config
-	d  *delegate
 	ml *memberlist.Memberlist
-}{
-	d: &delegate{},
 }
 
 type Config struct {
@@ -34,7 +31,7 @@ func Join(config *Config) error {
 	memberConf.BindAddr = config.PeerBindAddr.IP.String()
 	memberConf.BindPort = config.PeerBindAddr.Port
 
-	memberConf.Delegate = c.d
+	memberConf.Delegate = &delegate{}
 	memberConf.LogOutput = ioutil.Discard
 	c.c = config
 
