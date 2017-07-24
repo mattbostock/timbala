@@ -47,7 +47,7 @@ func Join(config *Config) error {
 
 	var err error
 	if c.ml, err = memberlist.Create(memberConf); err != nil {
-		return fmt.Errorf("Failed to configure cluster settings: %s", err)
+		return fmt.Errorf("failed to configure cluster settings: %s", err)
 	}
 	c.ml.Join(config.Peers)
 	return nil
