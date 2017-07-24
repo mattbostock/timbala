@@ -125,9 +125,9 @@ func main() {
 		log.Fatal("Failed to join the cluster: ", err)
 	}
 
-	log.Infof("starting AthensDB node %s", cluster.LocalNode())
-	log.Infof("binding to %s for peer gossip; %s for HTTP", config.peerBindAddr, config.httpBindAddr)
-	log.Infof("advertising to cluster as %s for peer gossip; %s for HTTP", config.peerAdvertiseAddr, config.httpAdvertiseAddr)
+	log.Infof("Starting AthensDB node %s", cluster.LocalNode())
+	log.Infof("Binding to %s for peer gossip; %s for HTTP", config.peerBindAddr, config.httpBindAddr)
+	log.Infof("Advertising to cluster as %s for peer gossip; %s for HTTP", config.peerAdvertiseAddr, config.httpAdvertiseAddr)
 	log.Infof("%d nodes in cluster: %s", len(cluster.Nodes()), cluster.Nodes())
 	log.Fatal(http.ListenAndServe(config.httpBindAddr.String(), router))
 }

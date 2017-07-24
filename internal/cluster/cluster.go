@@ -125,13 +125,13 @@ type nodeMeta struct {
 type eventDelegate struct{}
 
 func (e *eventDelegate) NotifyJoin(n *memberlist.Node) {
-	log.Infof("node joined: %s on %s", n.Name, n.Address())
+	log.Infof("Node joined: %s on %s", n.Name, n.Address())
 }
 
 func (e *eventDelegate) NotifyLeave(n *memberlist.Node) {
-	log.Infof("node left cluster: %s on %s", n.Name, n.Address())
+	log.Infof("Node left cluster: %s on %s", n.Name, n.Address())
 }
 
 func (e *eventDelegate) NotifyUpdate(n *memberlist.Node) {
-	log.Infof("node updated: %s on %s", n.Name, n.Address())
+	log.Infof("Node updated: %s on %s", n.Name, n.Address())
 }
