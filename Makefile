@@ -2,8 +2,8 @@ all: test build
 .PHONY: all build clean integration savedeps servedocs test testdeps testdocs
 
 MKDOCS_MATERIAL_VERSION=1.5.4
-VERSION := $(shell git describe --always | tr -d '\n'; test -z "`git status --porcelain`" || echo '-dirty')
-UNUSED_LIBS := $(shell govendor list +unused)
+VERSION = $(shell git describe --always | tr -d '\n'; test -z "`git status --porcelain`" || echo '-dirty')
+UNUSED_LIBS = $(shell govendor list +unused)
 
 build:
 	@go install -ldflags "-X main.version=$(VERSION)" ./...
