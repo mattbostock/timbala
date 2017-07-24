@@ -114,6 +114,7 @@ func main() {
 	write.SetStore(localStorage)
 	router.Post(write.Route, write.Handler)
 
+	cluster.SetLogger(log.StandardLogger())
 	if err := cluster.Join(&cluster.Config{
 		HTTPAdvertiseAddr: *config.httpAdvertiseAddr,
 		HTTPBindAddr:      *config.httpBindAddr,

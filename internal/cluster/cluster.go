@@ -6,12 +6,21 @@ import (
 	"io/ioutil"
 	"net"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/hashicorp/memberlist"
 )
 
-var c struct {
-	c  *Config
-	ml *memberlist.Memberlist
+
+var (
+	c struct {
+		c    *Config
+		ml   *memberlist.Memberlist
+	}
+	log *logrus.Logger
+)
+
+func SetLogger(l *logrus.Logger) {
+	log = l
 }
 
 type Config struct {
@@ -32,6 +41,7 @@ func Join(config *Config) error {
 	memberConf.BindPort = config.PeerBindAddr.Port
 
 	memberConf.Delegate = &delegate{}
+	memberConf.Events = &eventDelegate{}
 	memberConf.LogOutput = ioutil.Discard
 	c.c = config
 
@@ -110,4 +120,18 @@ func (d *delegate) MergeRemoteState(buf []byte, join bool) {}
 
 type nodeMeta struct {
 	HTTPAddr string `json:http_addr`
+}
+
+type eventDelegate struct{}
+
+func (e *eventDelegate) NotifyJoin(n *memberlist.Node) {
+	log.Infof("node joined: %s on %s", n.Name, n.Address())
+}
+
+func (e *eventDelegate) NotifyLeave(n *memberlist.Node) {
+	log.Infof("node left cluster: %s on %s", n.Name, n.Address())
+}
+
+func (e *eventDelegate) NotifyUpdate(n *memberlist.Node) {
+	log.Infof("node updated: %s on %s", n.Name, n.Address())
 }
