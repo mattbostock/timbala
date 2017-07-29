@@ -72,6 +72,7 @@ pages:
       - Monitoring: monitoring.md
       - Security: security.md
       - Backups: backups.md
+      - Failure modes: failure_modes.md
     - Querying: querying.md
     - Ingestion: ingestion.md
     - Glossary: glossary.md
