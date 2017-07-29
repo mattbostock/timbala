@@ -73,6 +73,7 @@ pages:
       - Security: security.md
       - Backups: backups.md
       - Failure modes: failure_modes.md
+      - Best practices: best_practices.md
     - Querying: querying.md
     - Ingestion: ingestion.md
     - Glossary: glossary.md
