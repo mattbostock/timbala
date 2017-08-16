@@ -1,18 +1,17 @@
-package main
+package acceptance_test
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/mattbostock/athensdb/internal/remote"
@@ -21,9 +20,17 @@ import (
 	"github.com/prometheus/common/model"
 )
 
-var httpBaseURL string
+// FIXME: Ensure that the binary is the one output by the Makefile and not some
+// other binary found in $PATH
+const executable = "athensdb"
+
+// FIXME: Set this explicitly when executing the binary
+var httpBaseURL = "http://localhost:9080"
 
 func TestSimpleArithmeticQuery(t *testing.T) {
+	c := run()
+	defer teardown(c)
+
 	query := "1+1"
 	expected := "2"
 
@@ -39,6 +46,9 @@ func TestSimpleArithmeticQuery(t *testing.T) {
 }
 
 func TestRemoteWrite(t *testing.T) {
+	c := run()
+	defer teardown(c)
+
 	testSample := model.Sample{
 		Metric:    make(model.Metric, 1),
 		Value:     1234,
@@ -58,6 +68,9 @@ func TestRemoteWrite(t *testing.T) {
 }
 
 func TestRemoteWriteThenQueryBack(t *testing.T) {
+	c := run()
+	defer teardown(c)
+
 	name := time.Now().Format("test_2006_01_02T15_04_05")
 
 	testSample := model.Sample{
@@ -94,20 +107,16 @@ func TestRemoteWriteThenQueryBack(t *testing.T) {
 	}
 }
 
-func TestMain(m *testing.M) {
-	// Use localhost to avoid firewall warnings when running tests under OS X.
-	config.httpBindAddr, _ = net.ResolveTCPAddr("tcp", defaultHTTPAddr)
-	config.peerBindAddr, _ = net.ResolveTCPAddr("tcp", defaultPeerAddr)
-
-	httpBaseURL = fmt.Sprintf("http://%s", config.httpBindAddr)
-	go main()
-
-	err := waitForServer(httpBaseURL)
+func run(args ...string) *exec.Cmd {
+	cmd := exec.Command(executable, args...)
+	cmd.Stderr = os.Stderr
+	cmd.Stdout = os.Stdout
+	err := cmd.Start()
 	if err != nil {
-		log.Fatal("Test setup failed: ", err)
+		panic(err)
 	}
-
-	os.Exit(m.Run())
+	waitForServer(httpBaseURL)
+	return cmd
 }
 
 func generateRemoteRequest(sample model.Sample) *remote.WriteRequest {
@@ -151,7 +160,7 @@ func postWriteRequest(req *remote.WriteRequest) (*http.Response, error) {
 	return resp, nil
 }
 
-func waitForServer(u string) error {
+func waitForServer(u string) {
 	c := make(chan error, 1)
 	go func() {
 		for {
@@ -175,8 +184,17 @@ func waitForServer(u string) error {
 
 	select {
 	case err := <-c:
-		return err
+		if err != nil {
+			panic(err)
+		}
 	case <-time.After(10 * time.Second):
-		return errors.New("timed out wating for server to start")
+		panic("timed out wating for server to start")
 	}
+}
+
+func teardown(cmd *exec.Cmd) {
+	_ = cmd.Process.Signal(syscall.SIGTERM)
+	_ = cmd.Wait()
+	// FIXME use more specific directory name
+	_ = os.RemoveAll("./data")
 }
