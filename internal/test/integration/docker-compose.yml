@@ -1,7 +1,7 @@
 version: '3.2'
 services:
   athensdb_1:
-    build: ../../
+    build: ../../../
     hostname: athensdb_1
     links:
       - athensdb_2
@@ -15,7 +15,7 @@ services:
       - '--peers=athensdb_2'
       - '--peers=athensdb_3'
   athensdb_2:
-    build: ../../
+    build: ../../../
     hostname: athensdb_2
     command:
       - '--log-level=debug'
@@ -24,7 +24,7 @@ services:
       - '--peer-advertise-addr=athensdb_2:7946'
       - '--peer-bind-addr=:7946'
   athensdb_3:
-    build: ../../
+    build: ../../../
     hostname: athensdb_3
     command:
       - '--log-level=debug'
@@ -55,8 +55,8 @@ services:
       - athensdb_3
   integration_tests:
     build:
-      context: ../../
-      dockerfile: internal/integration/Dockerfile
+      context: ../../../
+      dockerfile: internal/test/integration/Dockerfile
     links:
       - athensdb_1
       - athensdb_2

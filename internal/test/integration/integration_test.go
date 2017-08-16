@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mattbostock/athensdb/internal/testutil"
+	"github.com/mattbostock/athensdb/internal/test/testutil"
 	"github.com/prometheus/common/model"
 )
 
