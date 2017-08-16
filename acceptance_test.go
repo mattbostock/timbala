@@ -16,7 +16,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/mattbostock/athensdb/internal/remote"
-	"github.com/mattbostock/athensdb/internal/testutil"
+	"github.com/mattbostock/athensdb/internal/test/testutil"
 	"github.com/mattbostock/athensdb/internal/write"
 	"github.com/prometheus/common/model"
 )
