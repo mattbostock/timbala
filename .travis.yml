@@ -13,6 +13,10 @@ matrix:
     - tip
   fast_finish: true
 
+before_install:
+  - sudo apt-get update
+  - sudo apt-get -y -o Dpkg::Options::="--force-confnew" install docker-engine
+
 install:
   - go get github.com/kardianos/govendor
 
