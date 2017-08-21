@@ -1,16 +1,15 @@
-FROM golang:1.8
-LABEL maintainer="matt@mattbostock.com"
-
-EXPOSE 9080
-
+# Build stage
+FROM golang:1.8 as build
 WORKDIR /go/src/github.com/mattbostock/athensdb
+RUN apt-get update
+RUN apt-get install -y git make
 COPY . /go/src/github.com/mattbostock/athensdb
+RUN make
 
-RUN apt-get update && \
-  apt-get install -y git make && \
-  make && \
-  apt-get purge -y git make && \
-  cd && \
-  rm -rf /go/src
-
-ENTRYPOINT ["/go/bin/athensdb"]
+# Main stage
+FROM alpine:latest  
+EXPOSE 9080
+LABEL maintainer="matt@mattbostock.com"
+RUN apk --no-cache add ca-certificates
+COPY --from=build /go/bin/athensdb /
+ENTRYPOINT ["/athensdb"]

@@ -6,7 +6,7 @@ VERSION = $(shell git describe --always | tr -d '\n'; test -z "`git status --por
 UNUSED_LIBS = $(shell govendor list +unused)
 
 build:
-	@go install -ldflags "-X main.version=$(VERSION)" ./cmd/athensdb/
+	@CGO_ENABLED=0 go install -ldflags "-X main.version=$(VERSION)" ./cmd/athensdb/
 
 clean:
 	@docker-compose --file internal/test/integration/docker-compose.yml rm -f
