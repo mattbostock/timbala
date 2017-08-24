@@ -1,5 +1,5 @@
 FROM golang:1.8
-MAINTAINER Matt Bostock <matt@mattbostock.com>
+LABEL maintainer="matt@mattbostock.com"
 
 WORKDIR /go/src/github.com/mattbostock/athensdb
 COPY . /go/src/github.com/mattbostock/athensdb
