@@ -18,8 +18,10 @@ var athensDBAddr = []string{
 }
 
 func TestPrometheusMetricsCanBeQueried(t *testing.T) {
-	// Wait long enough for `scrape_interval` to pass, as specified in `prometheus.yml`
-	time.Sleep(2 * time.Second)
+	// Wait long enough for evaluation_interval and scrape_interval to
+	// pass, as specified in prometheus.yml, plus an additional 2 seconds
+	// to allow time for the data to be ingested to all nodes.
+	time.Sleep(4 * time.Second)
 
 	var wg sync.WaitGroup
 	for _, a := range athensDBAddr {

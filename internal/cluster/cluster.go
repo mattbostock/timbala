@@ -5,16 +5,17 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net"
+	"time"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/hashicorp/memberlist"
+	"github.com/prometheus/prometheus/pkg/labels"
 )
-
 
 var (
 	c struct {
-		c    *Config
-		ml   *memberlist.Memberlist
+		c  *Config
+		ml *memberlist.Memberlist
 	}
 	log *logrus.Logger
 )
@@ -51,6 +52,11 @@ func Join(config *Config) error {
 	}
 	c.ml.Join(config.Peers)
 	return nil
+}
+
+func GetNodesForSeries(_ labels.Labels, _, _ time.Time) []*Node {
+	// FIXME: implement hash ring, for now just return all nodes
+	return Nodes()
 }
 
 type Node struct {
