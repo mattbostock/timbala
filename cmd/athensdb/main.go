@@ -11,6 +11,8 @@ import (
 	v1API "github.com/mattbostock/athensdb/internal/api/v1"
 	"github.com/mattbostock/athensdb/internal/cluster"
 	"github.com/mattbostock/athensdb/internal/write"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/route"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage/tsdb"
@@ -22,10 +24,20 @@ const (
 	defaultHTTPAddr = "localhost:9080"
 	defaultPeerAddr = "localhost:7946"
 
-	apiRoute = "/api/v1"
+	apiRoute     = "/api/v1"
+	metricsRoute = "/metrics"
 )
 
 var (
+	buildInfo = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: os.Args[0],
+			Name:      "build_info",
+			Help:      fmt.Sprintf("A metric with a constant '1' value labeled by the application's semantic version number"),
+		},
+		[]string{"version"},
+	)
+
 	config struct {
 		httpAdvertiseAddr *net.TCPAddr
 		httpBindAddr      *net.TCPAddr
@@ -35,6 +47,11 @@ var (
 	}
 	version = "undefined"
 )
+
+func init() {
+	buildInfo.WithLabelValues(version).Set(1)
+	prometheus.MustRegister(buildInfo)
+}
 
 func main() {
 	kingpin.Flag(
@@ -113,6 +130,8 @@ func main() {
 	write.SetLogger(log.StandardLogger())
 	write.SetStore(localStorage)
 	router.Post(write.Route, write.Handler)
+
+	router.Get(metricsRoute, promhttp.Handler().ServeHTTP)
 
 	cluster.SetLogger(log.StandardLogger())
 	if err := cluster.Join(&cluster.Config{
