@@ -17,6 +17,8 @@ var athensDBAddr = []string{
 	"http://athensdb_3:9080",
 }
 
+// FIXME: This test relies on replicas of this metric being well distributed,
+// which is not guaranteed by the consistent hashing algorithm.
 func TestPrometheusMetricsCanBeQueried(t *testing.T) {
 	// Wait long enough for evaluation_interval and scrape_interval to
 	// pass, as specified in prometheus.yml, plus an additional 2 seconds

@@ -5,17 +5,25 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net"
+	"strconv"
 	"time"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/golang/groupcache/consistenthash"
 	"github.com/hashicorp/memberlist"
 	"github.com/prometheus/prometheus/pkg/labels"
 )
 
+const (
+	replicationFactor = 3
+	hashringVnodes    = 1200
+)
+
 var (
 	c struct {
-		c  *Config
-		ml *memberlist.Memberlist
+		c    *Config
+		ml   *memberlist.Memberlist
+		ring *consistenthash.Map
 	}
 	log *logrus.Logger
 )
@@ -45,6 +53,9 @@ func Join(config *Config) error {
 	memberConf.Events = &eventDelegate{}
 	memberConf.LogOutput = ioutil.Discard
 	c.c = config
+	// FIXME: Make dynamic with cluster size else distribution will degrade
+	// as nodes are added
+	c.ring = consistenthash.New(replicationFactor*hashringVnodes, nil)
 
 	var err error
 	if c.ml, err = memberlist.Create(memberConf); err != nil {
@@ -54,9 +65,25 @@ func Join(config *Config) error {
 	return nil
 }
 
-func GetNodesForSeries(_ labels.Labels, _, _ time.Time) []*Node {
-	// FIXME: implement hash ring, for now just return all nodes
-	return Nodes()
+func GetNodesForSeries(series labels.Labels, start, end time.Time) []*Node {
+	// FIXME need to consider start time
+	// FIXME cache hashmap of names to nodes?
+	var nodes []*Node
+	for i := 0; i < replicationFactor; i++ {
+		nodeName := c.ring.Get(strconv.Itoa(i) + SeriesPrimaryKey([]byte(""), end))
+		for _, n := range Nodes() {
+			if n.Name() == nodeName {
+				nodes = append(nodes, n)
+			}
+		}
+	}
+	return nodes
+}
+
+func SeriesPrimaryKey(salt []byte, end time.Time) string {
+	// FIXME use constant for time format
+	// FIXME filter quantile and le when hashing for data locality?
+	return fmt.Sprintf("%s%s", salt, end.Format("20060102"))
 }
 
 type Node struct {
@@ -132,10 +159,12 @@ type eventDelegate struct{}
 
 func (e *eventDelegate) NotifyJoin(n *memberlist.Node) {
 	log.Infof("Node joined: %s on %s", n.Name, n.Address())
+	c.ring.Add(n.Name)
 }
 
 func (e *eventDelegate) NotifyLeave(n *memberlist.Node) {
 	log.Infof("Node left cluster: %s on %s", n.Name, n.Address())
+	// FIXME remove node from ring
 }
 
 func (e *eventDelegate) NotifyUpdate(n *memberlist.Node) {

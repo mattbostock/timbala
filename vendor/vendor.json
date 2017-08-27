@@ -95,6 +95,12 @@
 			"revisionTime": "2017-04-10T11:03:47Z"
 		},
 		{
+			"checksumSHA1": "3KR3qbG0izQxxsSgDon+RNTS0eg=",
+			"path": "github.com/golang/groupcache/consistenthash",
+			"revision": "b710c8433bd175204919eb38776e944233235d03",
+			"revisionTime": "2017-04-21T00:56:42Z"
+		},
+		{
 			"checksumSHA1": "kBeNcaKk56FguvPSUCEaH6AxpRc=",
 			"path": "github.com/golang/protobuf/proto",
 			"revision": "2bba0603135d7d7f5cb73b2125beeda19c09f4ef",
@@ -161,6 +167,12 @@
 			"path": "github.com/miekg/dns",
 			"revision": "6ebcb714d36901126ee2807031543b38c56de963",
 			"revisionTime": "2017-04-12T18:47:48Z"
+		},
+		{
+			"checksumSHA1": "3EE72oPk9MsIzoLUeB/RQNABd3c=",
+			"path": "github.com/montanaflynn/stats",
+			"revision": "60dcacf48f43d6dd654d0ed94120ff5806c5ca5c",
+			"revisionTime": "2016-05-05T08:52:09Z"
 		},
 		{
 			"checksumSHA1": "aCtmlyAgau9n0UHs8Pk+3xfIaVk=",
