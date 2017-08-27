@@ -3,6 +3,7 @@ package acceptance_test
 import (
 	"bytes"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
@@ -26,6 +27,35 @@ const executable = "athensdb"
 
 // FIXME: Set this explicitly when executing the binary
 var httpBaseURL = "http://localhost:9080"
+
+func TestBuildInfoMetric(t *testing.T) {
+	c := run()
+	defer teardown(c)
+
+	resp, err := http.Get(httpBaseURL + "/metrics")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(string(body), "athensdb_build_info") {
+		t.Fatal("No build_info metric found")
+	}
+	if !strings.Contains(string(body), "prometheus_engine") {
+		t.Fatal("No Prometheus query engine metrics found")
+	}
+	if !strings.Contains(string(body), "http_request") {
+		t.Fatal("No HTTP API metrics found")
+	}
+	if !strings.Contains(string(body), "go_info") {
+		t.Fatal("No Go runtime metrics found")
+	}
+}
 
 func TestSimpleArithmeticQuery(t *testing.T) {
 	c := run()
