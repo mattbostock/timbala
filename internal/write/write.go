@@ -132,6 +132,10 @@ func remoteWrite(sampleMap sampleNodeMap) error {
 	var wg sync.WaitGroup
 	var wgErrChan = make(chan error, len(cluster.Nodes()))
 	for node, nodeSamples := range sampleMap {
+		if len(nodeSamples) == 0 {
+			continue
+		}
+
 		wg.Add(1)
 		go func(n cluster.Node, nSamples seriesMap) {
 			defer wg.Done()
