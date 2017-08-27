@@ -75,10 +75,10 @@ func main() {
 	}
 
 	if config.httpAdvertiseAddr.IP == nil || config.httpAdvertiseAddr.IP.IsUnspecified() {
-		logFlagFatal("must specify host or IP for --http--advertise-addr")
+		logFlagFatal("must specify host or IP for --http-advertise-addr")
 	}
 	if config.peerAdvertiseAddr.IP == nil || config.peerAdvertiseAddr.IP.IsUnspecified() {
-		logFlagFatal("must specify host or IP for --peer--advertise-addr")
+		logFlagFatal("must specify host or IP for --peer-advertise-addr")
 	}
 
 	lvl, err := log.ParseLevel(*level)
