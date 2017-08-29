@@ -15,8 +15,8 @@ import (
 )
 
 const (
-	numSamples   = 1e5
-	numTestNodes = 11
+	numSamples   int = 1e5
+	numTestNodes     = 5
 )
 
 var samples []model.Sample
