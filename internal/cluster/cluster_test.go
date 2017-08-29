@@ -2,6 +2,7 @@ package cluster
 
 import (
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -18,9 +19,18 @@ const (
 	numTestNodes = 11
 )
 
+var samples []model.Sample
+
+func TestMain(m *testing.M) {
+	samples = testutil.GenerateDataSamples(numSamples, 1, 24*time.Hour)
+	os.Exit(m.Run())
+}
+
 func TestHashringDistribution(t *testing.T) {
-	samples := testutil.GenerateDataSamples(numSamples, 1, 24*time.Hour)
 	testSampleDistribution(t, 1, samples)
+}
+
+func TestHashringDistributionWithReplication(t *testing.T) {
 	testSampleDistribution(t, replicationFactor, samples)
 }
 
