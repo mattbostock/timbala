@@ -15,8 +15,9 @@ import (
 )
 
 const (
-	replicationFactor = 3
-	hashringVnodes    = 1200
+	hashringVnodes       = 1200
+	primaryKeyDateFormat = "20060102"
+	replicationFactor    = 3
 )
 
 var (
@@ -80,9 +81,8 @@ func GetNodesForSeries(salt []byte, series labels.Labels, timestamp time.Time) [
 }
 
 func SeriesPrimaryKey(salt []byte, end time.Time) string {
-	// FIXME use constant for time format
 	// FIXME filter quantile and le when hashing for data locality?
-	return fmt.Sprintf("%s%s", salt, end.Format("20060102"))
+	return fmt.Sprintf("%s%s", salt, end.Format(primaryKeyDateFormat))
 }
 
 type Node struct {
