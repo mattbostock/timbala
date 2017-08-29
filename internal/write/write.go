@@ -75,7 +75,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		for _, s := range ts.Samples {
 			timestamp := time.Unix(s.TimestampMs/1000, (s.TimestampMs-s.TimestampMs/1000)*1e6)
 			// FIXME: Avoid panic if the cluster is not yet initialised
-			nodes := cluster.GetNodesForSeries(m, timestamp, timestamp)
+			nodes := cluster.GetNodesForSeries(m, timestamp)
 			for _, n := range nodes {
 				if _, ok := samplesToNodes[*n][m.Hash()]; !ok {
 					samplesToNodes[*n][m.Hash()] = &timeseries{labels: m}
