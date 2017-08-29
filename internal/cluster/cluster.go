@@ -65,11 +65,11 @@ func Join(config *Config) error {
 	return nil
 }
 
-func GetNodesForSeries(series labels.Labels, timestamp time.Time) []*Node {
+func GetNodesForSeries(salt []byte, series labels.Labels, timestamp time.Time) []*Node {
 	// FIXME cache hashmap of names to nodes?
 	var nodes []*Node
 	for i := 0; i < replicationFactor; i++ {
-		nodeName := c.ring.Get(strconv.Itoa(i) + SeriesPrimaryKey([]byte(""), timestamp))
+		nodeName := c.ring.Get(strconv.Itoa(i) + SeriesPrimaryKey(salt, timestamp))
 		for _, n := range Nodes() {
 			if n.Name() == nodeName {
 				nodes = append(nodes, n)
