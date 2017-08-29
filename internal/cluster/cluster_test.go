@@ -44,7 +44,9 @@ func testSampleDistribution(t *testing.T, replFactor int, samples []model.Sample
 		buckets = append(buckets, make([]model.Sample, 0, (numSamples/(numTestNodes-1))))
 	}
 
+	var replicationSpread stats.Float64Data
 	for _, s := range samples {
+		spread := make(map[int]bool)
 		for i := 0; i < replFactor; i++ {
 			// FIXME: Work out chunk end timestamp
 			node, err := strconv.Atoi(c.ring.Get(strconv.Itoa(i) + SeriesPrimaryKey([]byte(""), s.Timestamp.Time())))
@@ -52,7 +54,9 @@ func testSampleDistribution(t *testing.T, replFactor int, samples []model.Sample
 				t.Fatal(err)
 			}
 			buckets[node] = append(buckets[node], s)
+			spread[node] = true
 		}
+		replicationSpread = append(replicationSpread, float64(len(spread)))
 	}
 
 	fmt.Printf("Distribution of samples when replication factor is %d:\n\n", replFactor)
@@ -88,12 +92,65 @@ func testSampleDistribution(t *testing.T, replFactor int, samples []model.Sample
 	if err != nil {
 		t.Fatal(err)
 	}
+	fmt.Print("\nSummary:")
 	fmt.Printf("\nMin: %.0f", min)
 	fmt.Printf("\nMax: %.0f", max)
 	fmt.Printf("\nMean: %.2f", mean)
 	fmt.Printf("\nMedian: %.0f", median)
 	fmt.Printf("\nStandard deviation: %.2f", stddev)
 	fmt.Printf("\nTotal samples: %.0f\n\n", sum)
+
+	if replFactor > 1 {
+		replMin, err := replicationSpread.Min()
+		if err != nil {
+			t.Fatal(err)
+		}
+		replMax, err := replicationSpread.Max()
+		if err != nil {
+			t.Fatal(err)
+		}
+		replMode, err := replicationSpread.Mode()
+		if err != nil {
+			t.Fatal(err)
+		}
+		replMean, err := replicationSpread.Mean()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		fmt.Print("Distribution of replicas across nodes:\n\n")
+		for i := 0; i <= int(replMax); i++ {
+			samplesInBucket := 0
+			for _, j := range replicationSpread {
+				if i == int(j) {
+					samplesInBucket++
+				}
+			}
+
+			percent := float64(samplesInBucket) / float64(len(samples)) * 100
+			fmt.Printf("%-2d nodes: %-100s %5.2f%%; %d samples\n", i, strings.Repeat("#", int(percent)), percent, samplesInBucket)
+
+			if i == 0 && samplesInBucket > 0 {
+				t.Fatalf("%d samples were not allocated to any nodes", samplesInBucket)
+			}
+		}
+
+		fmt.Print("\nReplication summary:")
+		fmt.Printf("\nMin nodes samples are spread over: %.0f", replMin)
+		fmt.Printf("\nMax nodes samples are spread over: %.0f", replMax)
+		fmt.Printf("\nMode nodes samples are spread over: %.0f", replMode)
+		fmt.Printf("\nMean nodes samples are spread over: %.2f\n", replMean)
+
+		if len(replicationSpread) != len(samples) {
+			t.Fatalf("Not all samples accounted for in replication spread summary; expected %d, got %d", len(replicationSpread), len(samples))
+		}
+		if expected := float64(replicationFactor) * 0.8; replMean < expected {
+			t.Fatalf("Sample replicas are poorly distributed, expected mean replication factor of at least %.2f, got %.2f", expected, replMean)
+		}
+		if replMean != replicationFactor {
+			t.Skip("FIXME: Replicas are not yet perfectly distributed")
+		}
+	}
 
 	if min == 0 {
 		t.Fatal("Some nodes received zero samples")
