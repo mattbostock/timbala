@@ -12,7 +12,7 @@ clean:
 	@docker-compose --file internal/test/integration/docker-compose.yml rm -f
 
 integration:
-	@docker-compose --file internal/test/integration/docker-compose.yml up --build --abort-on-container-exit --exit-code-from integration_tests
+	@docker-compose --file internal/test/integration/docker-compose.yml up --build --abort-on-container-exit
 
 savedeps:
 	@govendor add +external
