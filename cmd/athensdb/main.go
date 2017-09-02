@@ -21,6 +21,8 @@ import (
 )
 
 const (
+	applicationName = "athensdb"
+
 	defaultHTTPAddr = "localhost:9080"
 	defaultPeerAddr = "localhost:7946"
 
@@ -31,7 +33,7 @@ const (
 var (
 	buildInfo = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Namespace: os.Args[0],
+			Namespace: applicationName,
 			Name:      "build_info",
 			Help:      fmt.Sprintf("A metric with a constant '1' value labeled by the application's semantic version number"),
 		},
