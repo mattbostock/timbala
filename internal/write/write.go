@@ -10,13 +10,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/mattbostock/athensdb/internal/cluster"
 	"github.com/mattbostock/athensdb/internal/remote"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/sirupsen/logrus"
 	"golang.org/x/net/context/ctxhttp"
 )
 
