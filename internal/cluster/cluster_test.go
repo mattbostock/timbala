@@ -146,7 +146,7 @@ func testSampleDistribution(t *testing.T, numTestNodes int, samples []model.Samp
 	fmt.Printf("\nMin nodes samples are spread over: %.0f", replMin)
 	fmt.Printf("\nMax nodes samples are spread over: %.0f", replMax)
 	fmt.Printf("\nMode nodes samples are spread over: %.0f", replMode)
-	fmt.Printf("\nMean nodes samples are spread over: %.2f\n", replMean)
+	fmt.Printf("\nMean nodes samples are spread over: %.2f\n\n", replMean)
 
 	if len(replicationSpread) != len(samples) {
 		t.Fatalf("Not all samples accounted for in replication spread summary; expected %d, got %d", len(replicationSpread), len(samples))
