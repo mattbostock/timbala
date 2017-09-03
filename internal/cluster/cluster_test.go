@@ -125,7 +125,7 @@ func testSampleDistribution(t *testing.T, numTestNodes int, samples []model.Samp
 		t.Fatal(err)
 	}
 
-	fmt.Print("Distribution of replicas across nodes:\n\n")
+	fmt.Printf("Distribution of %d replicas across %d nodes:\n\n", replicationFactor, numTestNodes)
 	for i := 0; i <= int(replMax); i++ {
 		samplesInBucket := 0
 		for _, j := range replicationSpread {
