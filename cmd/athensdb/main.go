@@ -15,7 +15,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/route"
 	"github.com/prometheus/prometheus/promql"
-	"github.com/prometheus/prometheus/storage/tsdb"
+	promtsdb "github.com/prometheus/prometheus/storage/tsdb"
+	"github.com/prometheus/tsdb"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/net/context"
 	"gopkg.in/alecthomas/kingpin.v2"
@@ -107,31 +108,31 @@ func main() {
 	}
 	log.SetLevel(lvl)
 
-	localStorage, err := tsdb.Open("data", nil, &tsdb.Options{
-		AppendableBlocks: 2,
-		MinBlockDuration: 2 * time.Hour,
-		MaxBlockDuration: 36 * time.Hour,
-		Retention:        time.Duration(math.MaxInt64), // approximately 290 years
+	// FIXME: Set logger and Prometheus registry
+	localStorage, err := tsdb.Open("data", nil, nil, &tsdb.Options{
+		WALFlushInterval:  5 * time.Second,
+		RetentionDuration: math.MaxUint64, // approximately 292,471,208 years
+		BlockRanges:       tsdb.ExponentialBlockRanges(int64(2*time.Hour)/1e6, 3, 5),
+		NoLockfile:        false,
 	})
 	if err != nil {
 		log.Fatalf("Opening storage failed: %s", err)
 	}
 
 	var (
-		ctx, cancelCtx = context.WithCancel(context.Background())
-		queryEngine    = promql.NewEngine(localStorage, promql.DefaultEngineOptions)
+		_, cancelCtx = context.WithCancel(context.Background())
+		queryEngine  = promql.NewEngine(promtsdb.Adapter(localStorage), promql.DefaultEngineOptions)
 	)
 	defer cancelCtx()
 
-	router := route.New(func(r *http.Request) (context.Context, error) {
-		return ctx, nil
-	})
+	// FIXME: Set context
+	router := route.New()
 
-	var api = v1API.NewAPI(queryEngine, localStorage)
+	var api = v1API.NewAPI(queryEngine, promtsdb.Adapter(localStorage))
 	api.Register(router.WithPrefix(apiRoute))
 
 	write.SetLogger(log.StandardLogger())
-	write.SetStore(localStorage)
+	write.SetStore(promtsdb.Adapter(localStorage))
 	router.Post(write.Route, write.Handler)
 
 	router.Get(metricsRoute, promhttp.Handler().ServeHTTP)

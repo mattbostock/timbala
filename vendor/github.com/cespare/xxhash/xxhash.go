@@ -169,6 +169,13 @@ func mergeRound(acc, val uint64) uint64 {
 
 // It's important for performance to get the rotates to actually compile to
 // ROLQs. gc will do this for us but only if rotate amount is a constant.
+//
+// TODO(caleb): In Go 1.9 a single function
+//   rol(x uint64, k uint) uint64
+// should do instead. See https://golang.org/issue/18254.
+//
+// TODO(caleb): In Go 1.x (1.9?) consider using the new math/bits package to be more
+// explicit about things. See https://golang.org/issue/18616.
 
 func rol1(x uint64) uint64  { return (x << 1) | (x >> (64 - 1)) }
 func rol7(x uint64) uint64  { return (x << 7) | (x >> (64 - 7)) }

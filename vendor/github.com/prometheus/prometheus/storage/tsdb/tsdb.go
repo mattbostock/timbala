@@ -1,15 +1,34 @@
+// Copyright 2017 The Prometheus Authors
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package tsdb
 
 import (
 	"time"
 	"unsafe"
 
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/tsdb"
 	tsdbLabels "github.com/prometheus/tsdb/labels"
 )
+
+func Adapter(db *tsdb.DB) storage.Storage {
+	return &adapter{db: db}
+}
 
 // adapter implements a storage.Storage around TSDB.
 type adapter struct {
@@ -23,35 +42,41 @@ type Options struct {
 
 	// The timestamp range of head blocks after which they get persisted.
 	// It's the minimum duration of any persisted block.
-	MinBlockDuration time.Duration
+	MinBlockDuration model.Duration
 
 	// The maximum timestamp range of compacted blocks.
-	MaxBlockDuration time.Duration
-
-	// Number of head blocks that can be appended to.
-	// Should be two or higher to prevent write errors in general scenarios.
-	//
-	// After a new block is started for timestamp t0 or higher, appends with
-	// timestamps as early as t0 - (n-1) * MinBlockDuration are valid.
-	AppendableBlocks int
+	MaxBlockDuration model.Duration
 
 	// Duration for how long to retain data.
-	Retention time.Duration
+	Retention model.Duration
+
+	// Disable creation and consideration of lockfile.
+	NoLockfile bool
 }
 
-// Open returns a new storage backed by a tsdb database.
-func Open(path string, r prometheus.Registerer, opts *Options) (storage.Storage, error) {
+// Open returns a new storage backed by a TSDB database that is configured for Prometheus.
+func Open(path string, r prometheus.Registerer, opts *Options) (*tsdb.DB, error) {
+	// Start with smallest block duration and create exponential buckets until the exceed the
+	// configured maximum block duration.
+	rngs := tsdb.ExponentialBlockRanges(int64(time.Duration(opts.MinBlockDuration).Seconds()*1000), 3, 10)
+
+	for i, v := range rngs {
+		if v > int64(time.Duration(opts.MaxBlockDuration).Seconds()*1000) {
+			rngs = rngs[:i]
+			break
+		}
+	}
+
 	db, err := tsdb.Open(path, nil, r, &tsdb.Options{
 		WALFlushInterval:  10 * time.Second,
-		MinBlockDuration:  uint64(opts.MinBlockDuration.Seconds() * 1000),
-		MaxBlockDuration:  uint64(opts.MaxBlockDuration.Seconds() * 1000),
-		AppendableBlocks:  opts.AppendableBlocks,
-		RetentionDuration: uint64(opts.Retention.Seconds() * 1000),
+		RetentionDuration: uint64(time.Duration(opts.Retention).Seconds() * 1000),
+		BlockRanges:       rngs,
+		NoLockfile:        opts.NoLockfile,
 	})
 	if err != nil {
 		return nil, err
 	}
-	return adapter{db: db}, nil
+	return db, nil
 }
 
 func (a adapter) Querier(mint, maxt int64) (storage.Querier, error) {
@@ -104,30 +129,34 @@ type appender struct {
 	a tsdb.Appender
 }
 
-func (a appender) Add(lset labels.Labels, t int64, v float64) (uint64, error) {
+func (a appender) Add(lset labels.Labels, t int64, v float64) (string, error) {
 	ref, err := a.a.Add(toTSDBLabels(lset), t, v)
 
-	switch err {
+	switch errors.Cause(err) {
 	case tsdb.ErrNotFound:
-		return 0, storage.ErrNotFound
+		return "", storage.ErrNotFound
 	case tsdb.ErrOutOfOrderSample:
-		return 0, storage.ErrOutOfOrderSample
+		return "", storage.ErrOutOfOrderSample
 	case tsdb.ErrAmendSample:
-		return 0, storage.ErrDuplicateSampleForTimestamp
+		return "", storage.ErrDuplicateSampleForTimestamp
+	case tsdb.ErrOutOfBounds:
+		return "", storage.ErrOutOfBounds
 	}
 	return ref, err
 }
 
-func (a appender) AddFast(ref uint64, t int64, v float64) error {
+func (a appender) AddFast(_ labels.Labels, ref string, t int64, v float64) error {
 	err := a.a.AddFast(ref, t, v)
 
-	switch err {
+	switch errors.Cause(err) {
 	case tsdb.ErrNotFound:
 		return storage.ErrNotFound
 	case tsdb.ErrOutOfOrderSample:
 		return storage.ErrOutOfOrderSample
 	case tsdb.ErrAmendSample:
 		return storage.ErrDuplicateSampleForTimestamp
+	case tsdb.ErrOutOfBounds:
+		return storage.ErrOutOfBounds
 	}
 	return err
 }

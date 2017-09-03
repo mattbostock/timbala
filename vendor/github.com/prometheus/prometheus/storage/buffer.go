@@ -1,6 +1,21 @@
+// Copyright 2017 The Prometheus Authors
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package storage
 
-import "math"
+import (
+	"math"
+)
 
 // BufferedSeriesIterator wraps an iterator with a look-back buffer.
 type BufferedSeriesIterator struct {
@@ -8,6 +23,7 @@ type BufferedSeriesIterator struct {
 	buf *sampleRing
 
 	lastTime int64
+	ok       bool
 }
 
 // NewBuffer returns a new iterator that buffers the values within the time range
@@ -17,16 +33,17 @@ func NewBuffer(it SeriesIterator, delta int64) *BufferedSeriesIterator {
 		it:       it,
 		buf:      newSampleRing(delta, 16),
 		lastTime: math.MinInt64,
+		ok:       true,
 	}
 	it.Next()
 
 	return bit
 }
 
-// PeekBack returns the previous element of the iterator. If there is none buffered,
+// PeekBack returns the nth previous element of the iterator. If there is none buffered,
 // ok is false.
-func (b *BufferedSeriesIterator) PeekBack() (t int64, v float64, ok bool) {
-	return b.buf.last()
+func (b *BufferedSeriesIterator) PeekBack(n int) (t int64, v float64, ok bool) {
+	return b.buf.nthLast(n)
 }
 
 // Buffer returns an iterator over the buffered data.
@@ -43,8 +60,8 @@ func (b *BufferedSeriesIterator) Seek(t int64) bool {
 	if t0 > b.lastTime {
 		b.buf.reset()
 
-		ok := b.it.Seek(t0)
-		if !ok {
+		b.ok = b.it.Seek(t0)
+		if !b.ok {
 			return false
 		}
 		b.lastTime, _ = b.Values()
@@ -64,14 +81,19 @@ func (b *BufferedSeriesIterator) Seek(t int64) bool {
 
 // Next advances the iterator to the next element.
 func (b *BufferedSeriesIterator) Next() bool {
+	if !b.ok {
+		return false
+	}
+
 	// Add current element to buffer before advancing.
 	b.buf.add(b.it.At())
 
-	ok := b.it.Next()
-	if ok {
+	b.ok = b.it.Next()
+	if b.ok {
 		b.lastTime, _ = b.Values()
 	}
-	return ok
+
+	return b.ok
 }
 
 // Values returns the current element of the iterator.
@@ -176,13 +198,13 @@ func (r *sampleRing) add(t int64, v float64) {
 	}
 }
 
-// last returns the most recent element added to the ring.
-func (r *sampleRing) last() (int64, float64, bool) {
-	if r.l == 0 {
+// nthLast returns the nth most recent element added to the ring.
+func (r *sampleRing) nthLast(n int) (int64, float64, bool) {
+	if n > r.l {
 		return 0, 0, false
 	}
-	s := r.buf[r.i]
-	return s.t, s.v, true
+	t, v := r.at(r.l - n)
+	return t, v, true
 }
 
 func (r *sampleRing) samples() []sample {
