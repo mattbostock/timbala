@@ -1,6 +1,22 @@
+// Copyright 2017 The Prometheus Authors
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package labels
 
-import "regexp"
+import (
+	"regexp"
+	"strings"
+)
 
 // Selector holds constraints for matching against a label set.
 type Selector []Matcher
@@ -71,3 +87,22 @@ func (m *notMatcher) Matches(v string) bool { return !m.Matcher.Matches(v) }
 func Not(m Matcher) Matcher {
 	return &notMatcher{m}
 }
+
+// PrefixMatcher implements Matcher for labels which values matches prefix.
+type PrefixMatcher struct {
+	name, prefix string
+}
+
+// NewPrefixMatcher returns new Matcher for label name matching prefix.
+func NewPrefixMatcher(name, prefix string) Matcher {
+	return &PrefixMatcher{name: name, prefix: prefix}
+}
+
+// Name implements Matcher interface.
+func (m *PrefixMatcher) Name() string { return m.name }
+
+// Prefix returns matching prefix.
+func (m *PrefixMatcher) Prefix() string { return m.prefix }
+
+// Matches implements Matcher interface.
+func (m *PrefixMatcher) Matches(v string) bool { return strings.HasPrefix(v, m.prefix) }

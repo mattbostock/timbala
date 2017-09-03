@@ -1,15 +1,29 @@
+// Copyright 2017 The Prometheus Authors
+
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package tsdb
 
 import (
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"sort"
 
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
+	"github.com/prometheus/tsdb/chunks"
+	"github.com/prometheus/tsdb/labels"
 )
 
 // DiskBlock handles reads against a Block of time series data.
@@ -23,8 +37,14 @@ type DiskBlock interface {
 	// Index returns an IndexReader over the block's data.
 	Index() IndexReader
 
-	// Series returns a SeriesReader over the block's data.
+	// Chunks returns a ChunkReader over the block's data.
 	Chunks() ChunkReader
+
+	// Tombstones returns a TombstoneReader over the block's deleted data.
+	Tombstones() TombstoneReader
+
+	// Delete deletes data from the block.
+	Delete(mint, maxt int64, ms ...labels.Matcher) error
 
 	// Close releases all underlying resources of the block.
 	Close() error
@@ -34,21 +54,29 @@ type DiskBlock interface {
 type Block interface {
 	DiskBlock
 	Queryable
+	Snapshottable
 }
 
-// HeadBlock is a regular block that can still be appended to.
-type HeadBlock interface {
+// headBlock is a regular block that can still be appended to.
+type headBlock interface {
 	Block
 	Appendable
+
+	// ActiveWriters returns the number of currently active appenders.
+	ActiveWriters() int
+	// HighTimestamp returns the highest currently inserted timestamp.
+	HighTimestamp() int64
+}
+
+// Snapshottable defines an entity that can be backedup online.
+type Snapshottable interface {
+	Snapshot(dir string) error
 }
 
 // Appendable defines an entity to which data can be appended.
 type Appendable interface {
 	// Appender returns a new Appender against an underlying store.
 	Appender() Appender
-
-	// Busy returns whether there are any currently active appenders.
-	Busy() bool
 }
 
 // Queryable defines an entity which provides a Querier.
@@ -61,25 +89,33 @@ type BlockMeta struct {
 	// Unique identifier for the block and its contents. Changes on compaction.
 	ULID ulid.ULID `json:"ulid"`
 
-	// Sequence number of the block.
-	Sequence int `json:"sequence"`
-
 	// MinTime and MaxTime specify the time range all samples
 	// in the block are in.
 	MinTime int64 `json:"minTime"`
 	MaxTime int64 `json:"maxTime"`
 
 	// Stats about the contents of the block.
-	Stats struct {
-		NumSamples uint64 `json:"numSamples,omitempty"`
-		NumSeries  uint64 `json:"numSeries,omitempty"`
-		NumChunks  uint64 `json:"numChunks,omitempty"`
-	} `json:"stats,omitempty"`
+	Stats BlockStats `json:"stats,omitempty"`
 
 	// Information on compactions the block was created from.
-	Compaction struct {
-		Generation int `json:"generation"`
-	} `json:"compaction"`
+	Compaction BlockMetaCompaction `json:"compaction"`
+}
+
+// BlockStats contains stats about contents of a block.
+type BlockStats struct {
+	NumSamples    uint64 `json:"numSamples,omitempty"`
+	NumSeries     uint64 `json:"numSeries,omitempty"`
+	NumChunks     uint64 `json:"numChunks,omitempty"`
+	NumTombstones uint64 `json:"numTombstones,omitempty"`
+}
+
+// BlockMetaCompaction holds information about compactions a block went through.
+type BlockMetaCompaction struct {
+	// Maximum number of compaction cycles any source block has
+	// gone through.
+	Level int `json:"level"`
+	// ULIDs of all source head blocks that went into the block.
+	Sources []ulid.ULID `json:"sources,omitempty"`
 }
 
 const (
@@ -125,8 +161,10 @@ func writeMetaFile(dir string, meta *BlockMeta) error {
 	enc := json.NewEncoder(f)
 	enc.SetIndent("", "\t")
 
-	if err := enc.Encode(&blockMeta{Version: 1, BlockMeta: meta}); err != nil {
-		return err
+	var merr MultiError
+	if merr.Add(enc.Encode(&blockMeta{Version: 1, BlockMeta: meta})); merr.Err() != nil {
+		merr.Add(f.Close())
+		return merr.Err()
 	}
 	if err := f.Close(); err != nil {
 		return err
@@ -140,15 +178,17 @@ type persistedBlock struct {
 
 	chunkr *chunkReader
 	indexr *indexReader
+
+	tombstones tombstoneReader
 }
 
-func newPersistedBlock(dir string) (*persistedBlock, error) {
+func newPersistedBlock(dir string, pool chunks.Pool) (*persistedBlock, error) {
 	meta, err := readMetaFile(dir)
 	if err != nil {
 		return nil, err
 	}
 
-	cr, err := newChunkReader(chunkDir(dir))
+	cr, err := newChunkReader(chunkDir(dir), pool)
 	if err != nil {
 		return nil, err
 	}
@@ -157,11 +197,17 @@ func newPersistedBlock(dir string) (*persistedBlock, error) {
 		return nil, err
 	}
 
+	tr, err := readTombstones(dir)
+	if err != nil {
+		return nil, err
+	}
+
 	pb := &persistedBlock{
-		dir:    dir,
-		meta:   *meta,
-		chunkr: cr,
-		indexr: ir,
+		dir:        dir,
+		meta:       *meta,
+		chunkr:     cr,
+		indexr:     ir,
+		tombstones: tr,
 	}
 	return pb, nil
 }
@@ -176,25 +222,131 @@ func (pb *persistedBlock) Close() error {
 }
 
 func (pb *persistedBlock) String() string {
-	return fmt.Sprintf("(%d, %s)", pb.meta.Sequence, pb.meta.ULID)
+	return pb.meta.ULID.String()
 }
 
 func (pb *persistedBlock) Querier(mint, maxt int64) Querier {
 	return &blockQuerier{
-		mint:   mint,
-		maxt:   maxt,
-		index:  pb.Index(),
-		chunks: pb.Chunks(),
+		mint:       mint,
+		maxt:       maxt,
+		index:      pb.Index(),
+		chunks:     pb.Chunks(),
+		tombstones: pb.Tombstones(),
 	}
 }
 
 func (pb *persistedBlock) Dir() string         { return pb.dir }
 func (pb *persistedBlock) Index() IndexReader  { return pb.indexr }
 func (pb *persistedBlock) Chunks() ChunkReader { return pb.chunkr }
-func (pb *persistedBlock) Meta() BlockMeta     { return pb.meta }
+func (pb *persistedBlock) Tombstones() TombstoneReader {
+	return pb.tombstones
+}
+func (pb *persistedBlock) Meta() BlockMeta { return pb.meta }
+
+func (pb *persistedBlock) Delete(mint, maxt int64, ms ...labels.Matcher) error {
+	pr := newPostingsReader(pb.indexr)
+	p, absent := pr.Select(ms...)
+
+	ir := pb.indexr
+
+	// Choose only valid postings which have chunks in the time-range.
+	stones := map[uint32]intervals{}
+
+	var lset labels.Labels
+	var chks []ChunkMeta
+
+Outer:
+	for p.Next() {
+		err := ir.Series(p.At(), &lset, &chks)
+		if err != nil {
+			return err
+		}
+
+		for _, abs := range absent {
+			if lset.Get(abs) != "" {
+				continue Outer
+			}
+		}
+
+		for _, chk := range chks {
+			if intervalOverlap(mint, maxt, chk.MinTime, chk.MaxTime) {
+				// Delete only until the current vlaues and not beyond.
+				tmin, tmax := clampInterval(mint, maxt, chks[0].MinTime, chks[len(chks)-1].MaxTime)
+				stones[p.At()] = intervals{{tmin, tmax}}
+				continue Outer
+			}
+		}
+	}
+
+	if p.Err() != nil {
+		return p.Err()
+	}
+
+	// Merge the current and new tombstones.
+	for k, v := range stones {
+		pb.tombstones.add(k, v[0])
+	}
+
+	if err := writeTombstoneFile(pb.dir, pb.tombstones); err != nil {
+		return err
+	}
+
+	pb.meta.Stats.NumTombstones = uint64(len(pb.tombstones))
+	return writeMetaFile(pb.dir, &pb.meta)
+}
+
+func (pb *persistedBlock) Snapshot(dir string) error {
+	blockDir := filepath.Join(dir, pb.meta.ULID.String())
+	if err := os.MkdirAll(blockDir, 0777); err != nil {
+		return errors.Wrap(err, "create snapshot block dir")
+	}
+
+	chunksDir := chunkDir(blockDir)
+	if err := os.MkdirAll(chunksDir, 0777); err != nil {
+		return errors.Wrap(err, "create snapshot chunk dir")
+	}
+
+	// Hardlink meta, index and tombstones
+	for _, fname := range []string{
+		metaFilename,
+		indexFilename,
+		tombstoneFilename,
+	} {
+		if err := os.Link(filepath.Join(pb.dir, fname), filepath.Join(blockDir, fname)); err != nil {
+			return errors.Wrapf(err, "create snapshot %s", fname)
+		}
+	}
+
+	// Hardlink the chunks
+	curChunkDir := chunkDir(pb.dir)
+	files, err := ioutil.ReadDir(curChunkDir)
+	if err != nil {
+		return errors.Wrap(err, "ReadDir the current chunk dir")
+	}
+
+	for _, f := range files {
+		err := os.Link(filepath.Join(curChunkDir, f.Name()), filepath.Join(chunksDir, f.Name()))
+		if err != nil {
+			return errors.Wrap(err, "hardlink a chunk")
+		}
+	}
+
+	return nil
+}
 
 func chunkDir(dir string) string { return filepath.Join(dir, "chunks") }
 func walDir(dir string) string   { return filepath.Join(dir, "wal") }
+
+func clampInterval(a, b, mint, maxt int64) (int64, int64) {
+	if a < mint {
+		a = mint
+	}
+	if b > maxt {
+		b = maxt
+	}
+
+	return a, b
+}
 
 type mmapFile struct {
 	f *os.File
@@ -227,31 +379,4 @@ func (f *mmapFile) Close() error {
 		return err0
 	}
 	return err1
-}
-
-// A skiplist maps offsets to values. The values found in the data at an
-// offset are strictly greater than the indexed value.
-type skiplist interface {
-	// offset returns the offset to data containing values of x and lower.
-	offset(x int64) (uint32, bool)
-}
-
-// simpleSkiplist is a slice of plain value/offset pairs.
-type simpleSkiplist []skiplistPair
-
-type skiplistPair struct {
-	value  int64
-	offset uint32
-}
-
-func (sl simpleSkiplist) offset(x int64) (uint32, bool) {
-	// Search for the first offset that contains data greater than x.
-	i := sort.Search(len(sl), func(i int) bool { return sl[i].value >= x })
-
-	// If no element was found return false. If the first element is found,
-	// there's no previous offset actually containing values that are x or lower.
-	if i == len(sl) || i == 0 {
-		return 0, false
-	}
-	return sl[i-1].offset, true
 }

@@ -15,6 +15,7 @@ package promql
 
 import (
 	"fmt"
+	"math"
 	"runtime"
 	"sort"
 	"strconv"
@@ -24,6 +25,7 @@ import (
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/pkg/value"
 
 	"github.com/prometheus/prometheus/util/strutil"
 )
@@ -201,17 +203,25 @@ func (p *parser) parseSeriesDesc() (m labels.Labels, vals []sequenceValue, err e
 				sign = -1
 			}
 		}
-		k := sign * p.number(p.expect(itemNumber, ctx).val)
+		var k float64
+		if t := p.peek().typ; t == itemNumber {
+			k = sign * p.number(p.expect(itemNumber, ctx).val)
+		} else if t == itemIdentifier && p.peek().val == "stale" {
+			p.next()
+			k = math.Float64frombits(value.StaleNaN)
+		} else {
+			p.errorf("expected number or 'stale' in %s but got %s", ctx, t.desc())
+		}
 		vals = append(vals, sequenceValue{
 			value: k,
 		})
 
 		// If there are no offset repetitions specified, proceed with the next value.
-		if t := p.peek().typ; t == itemNumber || t == itemBlank {
+		if t := p.peek(); t.typ == itemNumber || t.typ == itemBlank || t.typ == itemIdentifier && t.val == "stale" {
 			continue
-		} else if t == itemEOF {
+		} else if t.typ == itemEOF {
 			break
-		} else if t != itemADD && t != itemSUB {
+		} else if t.typ != itemADD && t.typ != itemSUB {
 			p.errorf("expected next value or relative expansion in %s but got %s", ctx, t.desc())
 		}
 
@@ -1084,13 +1094,23 @@ func (p *parser) checkType(node Node) (typ ValueType) {
 
 	case *Call:
 		nargs := len(n.Func.ArgTypes)
-		if na := nargs - n.Func.OptionalArgs; na > len(n.Args) {
-			p.errorf("expected at least %d argument(s) in call to %q, got %d", na, n.Func.Name, len(n.Args))
+		if n.Func.Variadic == 0 {
+			if nargs != len(n.Args) {
+				p.errorf("expected %d argument(s) in call to %q, got %d", nargs, n.Func.Name, len(n.Args))
+			}
+		} else {
+			na := nargs - 1
+			if na > len(n.Args) {
+				p.errorf("expected at least %d argument(s) in call to %q, got %d", na, n.Func.Name, len(n.Args))
+			} else if nargsmax := na + n.Func.Variadic; n.Func.Variadic > 0 && nargsmax < len(n.Args) {
+				p.errorf("expected at most %d argument(s) in call to %q, got %d", nargsmax, n.Func.Name, len(n.Args))
+			}
 		}
-		if nargs < len(n.Args) {
-			p.errorf("expected at most %d argument(s) in call to %q, got %d", nargs, n.Func.Name, len(n.Args))
-		}
+
 		for i, arg := range n.Args {
+			if i >= len(n.Func.ArgTypes) {
+				i = len(n.Func.ArgTypes) - 1
+			}
 			p.expectType(arg, n.Func.ArgTypes[i], fmt.Sprintf("call to function %q", n.Func.Name))
 		}
 

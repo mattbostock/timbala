@@ -23,10 +23,12 @@ import (
 	"sync"
 	"time"
 
+	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/timestamp"
+	"github.com/prometheus/prometheus/pkg/value"
 	"github.com/prometheus/prometheus/storage"
 	"golang.org/x/net/context"
 
@@ -36,6 +38,7 @@ import (
 const (
 	namespace = "prometheus"
 	subsystem = "engine"
+	queryTag  = "query"
 
 	// The largest SampleValue that can be converted to an int64 without overflow.
 	maxInt64 = 9223372036854774784
@@ -113,6 +116,9 @@ type (
 	ErrQueryTimeout string
 	// ErrQueryCanceled is returned if a query was canceled during processing.
 	ErrQueryCanceled string
+	// ErrStorage is returned if an error was encountered in the storage layer
+	// during query handling.
+	ErrStorage error
 )
 
 func (e ErrQueryTimeout) Error() string  { return fmt.Sprintf("query timed out in %s", string(e)) }
@@ -139,7 +145,7 @@ type query struct {
 	stmt Statement
 	// Timer stats for the query execution.
 	stats *stats.TimerGroup
-	// Cancelation function for the query.
+	// Cancellation function for the query.
 	cancel func()
 
 	// The engine against which the query is executed.
@@ -165,6 +171,10 @@ func (q *query) Cancel() {
 
 // Exec implements the Query interface.
 func (q *query) Exec(ctx context.Context) *Result {
+	if span := opentracing.SpanFromContext(ctx); span != nil {
+		span.SetTag(queryTag, q.stmt.String())
+	}
+
 	res, err := q.ng.exec(ctx, q)
 	return &Result{Err: err, Value: res}
 }
@@ -195,6 +205,8 @@ type Engine struct {
 	// The gate limiting the maximum number of concurrent and waiting queries.
 	gate    *queryGate
 	options *EngineOptions
+
+	logger log.Logger
 }
 
 // Queryable allows opening a storage querier.
@@ -212,6 +224,7 @@ func NewEngine(queryable Queryable, o *EngineOptions) *Engine {
 		queryable: queryable,
 		gate:      newQueryGate(o.MaxConcurrentQueries),
 		options:   o,
+		logger:    o.Logger,
 	}
 }
 
@@ -219,12 +232,14 @@ func NewEngine(queryable Queryable, o *EngineOptions) *Engine {
 type EngineOptions struct {
 	MaxConcurrentQueries int
 	Timeout              time.Duration
+	Logger               log.Logger
 }
 
 // DefaultEngineOptions are the default engine options.
 var DefaultEngineOptions = &EngineOptions{
 	MaxConcurrentQueries: 20,
 	Timeout:              2 * time.Minute,
+	Logger:               log.Base(),
 }
 
 // NewInstantQuery returns an evaluation query for the given expression at the given time.
@@ -360,9 +375,11 @@ func (ng *Engine) execEvalStmt(ctx context.Context, query *query, s *EvalStmt) (
 	evalTimer := query.stats.GetTimer(stats.InnerEvalTime).Start()
 	// Instant evaluation.
 	if s.Start == s.End && s.Interval == 0 {
+		start := timeMilliseconds(s.Start)
 		evaluator := &evaluator{
-			Timestamp: timeMilliseconds(s.Start),
+			Timestamp: start,
 			ctx:       ctx,
+			logger:    ng.logger,
 		}
 		val, err := evaluator.Eval(s.Expr)
 		if err != nil {
@@ -371,6 +388,16 @@ func (ng *Engine) execEvalStmt(ctx context.Context, query *query, s *EvalStmt) (
 
 		evalTimer.Stop()
 		queryInnerEval.Observe(evalTimer.ElapsedTime().Seconds())
+		// Point might have a different timestamp, force it to the evaluation
+		// timestamp as that is when we ran the evaluation.
+		switch v := val.(type) {
+		case Scalar:
+			v.T = start
+		case Vector:
+			for i := range v {
+				v[i].Point.T = start
+			}
+		}
 
 		return val, nil
 	}
@@ -384,9 +411,11 @@ func (ng *Engine) execEvalStmt(ctx context.Context, query *query, s *EvalStmt) (
 			return nil, err
 		}
 
+		t := timeMilliseconds(ts)
 		evaluator := &evaluator{
-			Timestamp: timeMilliseconds(ts),
+			Timestamp: t,
 			ctx:       ctx,
+			logger:    ng.logger,
 		}
 		val, err := evaluator.Eval(s.Expr)
 		if err != nil {
@@ -402,7 +431,7 @@ func (ng *Engine) execEvalStmt(ctx context.Context, query *query, s *EvalStmt) (
 				ss = Series{Points: make([]Point, 0, numSteps)}
 				Seriess[0] = ss
 			}
-			ss.Points = append(ss.Points, Point(v))
+			ss.Points = append(ss.Points, Point{V: v.V, T: t})
 			Seriess[0] = ss
 		case Vector:
 			for _, sample := range v {
@@ -415,6 +444,7 @@ func (ng *Engine) execEvalStmt(ctx context.Context, query *query, s *EvalStmt) (
 					}
 					Seriess[h] = ss
 				}
+				sample.Point.T = t
 				ss.Points = append(ss.Points, sample.Point)
 				Seriess[h] = ss
 			}
@@ -457,11 +487,11 @@ func (ng *Engine) populateIterators(ctx context.Context, s *EvalStmt) (storage.Q
 	Inspect(s.Expr, func(node Node) bool {
 		switch n := node.(type) {
 		case *VectorSelector:
-			if maxOffset < StalenessDelta {
-				maxOffset = StalenessDelta
+			if maxOffset < LookbackDelta {
+				maxOffset = LookbackDelta
 			}
-			if n.Offset+StalenessDelta > maxOffset {
-				maxOffset = n.Offset + StalenessDelta
+			if n.Offset+LookbackDelta > maxOffset {
+				maxOffset = n.Offset + LookbackDelta
 			}
 		case *MatrixSelector:
 			if maxOffset < n.Range {
@@ -487,18 +517,18 @@ func (ng *Engine) populateIterators(ctx context.Context, s *EvalStmt) (storage.Q
 			n.series, err = expandSeriesSet(querier.Select(n.LabelMatchers...))
 			if err != nil {
 				// TODO(fabxc): use multi-error.
-				log.Errorln("expand series set:", err)
+				ng.logger.Errorln("expand series set:", err)
 				return false
 			}
 			for _, s := range n.series {
-				it := storage.NewBuffer(s.Iterator(), durationMilliseconds(StalenessDelta))
+				it := storage.NewBuffer(s.Iterator(), durationMilliseconds(LookbackDelta))
 				n.iterators = append(n.iterators, it)
 			}
 
 		case *MatrixSelector:
 			n.series, err = expandSeriesSet(querier.Select(n.LabelMatchers...))
 			if err != nil {
-				log.Errorln("expand series set:", err)
+				ng.logger.Errorln("expand series set:", err)
 				return false
 			}
 			for _, s := range n.series {
@@ -527,6 +557,8 @@ type evaluator struct {
 	Timestamp int64 // time in milliseconds
 
 	finalizers []func()
+
+	logger log.Logger
 }
 
 func (ev *evaluator) close() {
@@ -554,7 +586,7 @@ func (ev *evaluator) recover(errp *error) {
 			buf := make([]byte, 64<<10)
 			buf = buf[:runtime.Stack(buf, false)]
 
-			log.Errorf("parser panic: %v\n%s", e, buf)
+			ev.logger.Errorf("parser panic: %v\n%s", e, buf)
 			*errp = fmt.Errorf("unexpected error")
 		} else {
 			*errp = e.(error)
@@ -637,7 +669,7 @@ func (ev *evaluator) Eval(expr Expr) (v Value, err error) {
 // eval evaluates the given expression as the given AST expression node requires.
 func (ev *evaluator) eval(expr Expr) Value {
 	// This is the top-level evaluation method.
-	// Thus, we check for timeout/cancelation here.
+	// Thus, we check for timeout/cancellation here.
 	if err := contextDone(ev.ctx, "expression evaluation"); err != nil {
 		ev.error(err)
 	}
@@ -720,23 +752,49 @@ func (ev *evaluator) vectorSelector(node *VectorSelector) Vector {
 	)
 
 	for i, it := range node.iterators {
+		var t int64
+		var v float64
+
 		ok := it.Seek(refTime)
 		if !ok {
 			if it.Err() != nil {
 				ev.error(it.Err())
 			}
 		}
-		t, v := it.Values()
 
+		if ok {
+			t, v = it.Values()
+		}
+
+		peek := 1
 		if !ok || t > refTime {
-			t, v, ok = it.PeekBack()
-			if !ok || t < refTime-durationMilliseconds(StalenessDelta) {
+			t, v, ok = it.PeekBack(peek)
+			peek++
+			if !ok || t < refTime-durationMilliseconds(LookbackDelta) {
 				continue
 			}
 		}
+		if value.IsStaleNaN(v) {
+			continue
+		}
+		// Find timestamp before this point, within the staleness delta.
+		prevT, _, ok := it.PeekBack(peek)
+		if ok && prevT >= refTime-durationMilliseconds(LookbackDelta) {
+			interval := t - prevT
+			if interval*4+interval/10 < refTime-t {
+				// It is more than 4 (+10% for safety) intervals
+				// since the last data point, skip as stale.
+				//
+				// We need 4 to allow for federation, as with a 10s einterval an eval
+				// started at t=10 could be ingested at t=20, scraped for federation at
+				// t=30 and only ingested by federation at t=40.
+				continue
+			}
+		}
+
 		vec = append(vec, Sample{
 			Metric: node.series[i].Labels(),
-			Point:  Point{V: v, T: ev.Timestamp},
+			Point:  Point{V: v, T: t},
 		})
 	}
 	return vec
@@ -799,20 +857,24 @@ func (ev *evaluator) matrixSelector(node *MatrixSelector) Matrix {
 				ev.error(it.Err())
 			}
 		}
-		t, v := it.Values()
 
 		buf := it.Buffer()
 		for buf.Next() {
 			t, v := buf.At()
+			if value.IsStaleNaN(v) {
+				continue
+			}
 			// Values in the buffer are guaranteed to be smaller than maxt.
 			if t >= mint {
 				allPoints = append(allPoints, Point{T: t, V: v})
 			}
 		}
 		// The seeked sample might also be in the range.
-		t, v = it.Values()
-		if t == maxt {
-			allPoints = append(allPoints, Point{T: t, V: v})
+		if ok {
+			t, v := it.Values()
+			if t == maxt && !value.IsStaleNaN(v) {
+				allPoints = append(allPoints, Point{T: t, V: v})
+			}
 		}
 
 		ss.Points = allPoints[start:]
@@ -1405,9 +1467,9 @@ func shouldDropMetricName(op itemType) bool {
 	}
 }
 
-// StalenessDelta determines the time since the last sample after which a time
+// LookbackDelta determines the time since the last sample after which a time
 // series is considered stale.
-var StalenessDelta = 5 * time.Minute
+var LookbackDelta = 5 * time.Minute
 
 // A queryGate controls the maximum number of concurrently running and waiting queries.
 type queryGate struct {

@@ -19,10 +19,12 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 )
 
+// The errors exposed.
 var (
 	ErrNotFound                    = errors.New("not found")
 	ErrOutOfOrderSample            = errors.New("out of order sample")
 	ErrDuplicateSampleForTimestamp = errors.New("duplicate sample for timestamp")
+	ErrOutOfBounds                 = errors.New("out of bounds")
 )
 
 // Storage ingests and manages samples, along with various indexes. All methods
@@ -52,9 +54,9 @@ type Querier interface {
 
 // Appender provides batched appends against a storage.
 type Appender interface {
-	Add(l labels.Labels, t int64, v float64) (uint64, error)
+	Add(l labels.Labels, t int64, v float64) (string, error)
 
-	AddFast(ref uint64, t int64, v float64) error
+	AddFast(l labels.Labels, ref string, t int64, v float64) error
 
 	// Commit submits the collected samples and purges the batch.
 	Commit() error

@@ -1,3 +1,16 @@
+// Copyright 2017 The Prometheus Authors
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package tsdb
 
 import (
@@ -8,7 +21,6 @@ import (
 	"io"
 	"math"
 	"os"
-	"path/filepath"
 	"sync"
 	"time"
 
@@ -34,11 +46,20 @@ const (
 	WALEntrySymbols WALEntryType = 1
 	WALEntrySeries  WALEntryType = 2
 	WALEntrySamples WALEntryType = 3
+	WALEntryDeletes WALEntryType = 4
 )
 
-// WAL is a write ahead log for series data. It can only be written to.
-// Use WALReader to read back from a write ahead log.
-type WAL struct {
+// SamplesCB is the callback after reading samples.
+type SamplesCB func([]RefSample) error
+
+// SeriesCB is the callback after reading series.
+type SeriesCB func([]labels.Labels) error
+
+// DeletesCB is the callback after reading deletes.
+type DeletesCB func([]Stone) error
+
+// SegmentWAL is a write ahead log for series data.
+type SegmentWAL struct {
 	mtx sync.Mutex
 
 	dirFile *os.File
@@ -56,8 +77,29 @@ type WAL struct {
 	donec chan struct{}
 }
 
+// WAL is a write ahead log that can log new series labels and samples.
+// It must be completely read before new entries are logged.
+type WAL interface {
+	Reader() WALReader
+	LogSeries([]labels.Labels) error
+	LogSamples([]RefSample) error
+	LogDeletes([]Stone) error
+	Close() error
+}
+
+// WALReader reads entries from a WAL.
+type WALReader interface {
+	Read(SeriesCB, SamplesCB, DeletesCB) error
+}
+
+// RefSample is a timestamp/value pair associated with a reference to a series.
+type RefSample struct {
+	Ref uint64
+	T   int64
+	V   float64
+}
+
 const (
-	walDirName          = "wal"
 	walSegmentSizeBytes = 256 * 1024 * 1024 // 256 MB
 )
 
@@ -70,11 +112,9 @@ func init() {
 	castagnoliTable = crc32.MakeTable(crc32.Castagnoli)
 }
 
-// OpenWAL opens or creates a write ahead log in the given directory.
+// OpenSegmentWAL opens or creates a write ahead log in the given directory.
 // The WAL must be read completely before new data is written.
-func OpenWAL(dir string, logger log.Logger, flushInterval time.Duration) (*WAL, error) {
-	dir = filepath.Join(dir, walDirName)
-
+func OpenSegmentWAL(dir string, logger log.Logger, flushInterval time.Duration) (*SegmentWAL, error) {
 	if err := os.MkdirAll(dir, 0777); err != nil {
 		return nil, err
 	}
@@ -86,7 +126,7 @@ func OpenWAL(dir string, logger log.Logger, flushInterval time.Duration) (*WAL, 
 		logger = log.NewNopLogger()
 	}
 
-	w := &WAL{
+	w := &SegmentWAL{
 		dirFile:       df,
 		logger:        logger,
 		flushInterval: flushInterval,
@@ -106,18 +146,45 @@ func OpenWAL(dir string, logger log.Logger, flushInterval time.Duration) (*WAL, 
 
 // Reader returns a new reader over the the write ahead log data.
 // It must be completely consumed before writing to the WAL.
-func (w *WAL) Reader() *WALReader {
-	return NewWALReader(w.logger, w)
+func (w *SegmentWAL) Reader() WALReader {
+	return newWALReader(w, w.logger)
 }
 
 // Log writes a batch of new series labels and samples to the log.
-func (w *WAL) Log(series []labels.Labels, samples []refdSample) error {
+//func (w *SegmentWAL) Log(series []labels.Labels, samples []RefSample) error {
+//return nil
+//}
+
+// LogSeries writes a batch of new series labels to the log.
+func (w *SegmentWAL) LogSeries(series []labels.Labels) error {
 	if err := w.encodeSeries(series); err != nil {
 		return err
 	}
+
+	if w.flushInterval <= 0 {
+		return w.Sync()
+	}
+	return nil
+}
+
+// LogSamples writes a batch of new samples to the log.
+func (w *SegmentWAL) LogSamples(samples []RefSample) error {
 	if err := w.encodeSamples(samples); err != nil {
 		return err
 	}
+
+	if w.flushInterval <= 0 {
+		return w.Sync()
+	}
+	return nil
+}
+
+// LogDeletes write a batch of new deletes to the log.
+func (w *SegmentWAL) LogDeletes(stones []Stone) error {
+	if err := w.encodeDeletes(stones); err != nil {
+		return err
+	}
+
 	if w.flushInterval <= 0 {
 		return w.Sync()
 	}
@@ -126,7 +193,7 @@ func (w *WAL) Log(series []labels.Labels, samples []refdSample) error {
 
 // initSegments finds all existing segment files and opens them in the
 // appropriate file modes.
-func (w *WAL) initSegments() error {
+func (w *SegmentWAL) initSegments() error {
 	fns, err := sequenceFiles(w.dirFile.Name(), "")
 	if err != nil {
 		return err
@@ -134,7 +201,7 @@ func (w *WAL) initSegments() error {
 	if len(fns) == 0 {
 		return nil
 	}
-	// We must open all file in read mode as we may have to truncate along
+	// We must open all files in read/write mode as we may have to truncate along
 	// the way and any file may become the tail.
 	for _, fn := range fns {
 		f, err := os.OpenFile(fn, os.O_RDWR, 0666)
@@ -165,10 +232,10 @@ func (w *WAL) initSegments() error {
 	return nil
 }
 
-// cut finishes the currently active segments and open the next one.
+// cut finishes the currently active segments and opens the next one.
 // The encoder is reset to point to the new segment.
-func (w *WAL) cut() error {
-	// Sync current tail to disc and close.
+func (w *SegmentWAL) cut() error {
+	// Sync current tail to disk and close.
 	if tf := w.tail(); tf != nil {
 		if err := w.sync(); err != nil {
 			return err
@@ -216,7 +283,7 @@ func (w *WAL) cut() error {
 	return nil
 }
 
-func (w *WAL) tail() *os.File {
+func (w *SegmentWAL) tail() *os.File {
 	if len(w.files) == 0 {
 		return nil
 	}
@@ -224,14 +291,14 @@ func (w *WAL) tail() *os.File {
 }
 
 // Sync flushes the changes to disk.
-func (w *WAL) Sync() error {
+func (w *SegmentWAL) Sync() error {
 	w.mtx.Lock()
 	defer w.mtx.Unlock()
 
 	return w.sync()
 }
 
-func (w *WAL) sync() error {
+func (w *SegmentWAL) sync() error {
 	if w.cur == nil {
 		return nil
 	}
@@ -241,7 +308,7 @@ func (w *WAL) sync() error {
 	return fileutil.Fdatasync(w.tail())
 }
 
-func (w *WAL) run(interval time.Duration) {
+func (w *SegmentWAL) run(interval time.Duration) {
 	var tick <-chan time.Time
 
 	if interval > 0 {
@@ -263,8 +330,8 @@ func (w *WAL) run(interval time.Duration) {
 	}
 }
 
-// Close sync all data and closes the underlying resources.
-func (w *WAL) Close() error {
+// Close syncs all data and closes the underlying resources.
+func (w *SegmentWAL) Close() error {
 	close(w.stopc)
 	<-w.donec
 
@@ -292,13 +359,14 @@ const (
 	walPageBytes = 16 * minSectorSize
 )
 
-func (w *WAL) entry(et WALEntryType, flag byte, buf []byte) error {
+func (w *SegmentWAL) entry(et WALEntryType, flag byte, buf []byte) error {
 	w.mtx.Lock()
 	defer w.mtx.Unlock()
 
-	// Cut to the next segment if exceeds the file size unless it would also
+	// Cut to the next segment if the entry exceeds the file size unless it would also
 	// exceed the size of a new segment.
 	var (
+		// 6-byte header + 4-byte CRC32 + buf.
 		sz    = int64(6 + 4 + len(buf))
 		newsz = w.curN + sz
 	)
@@ -338,6 +406,7 @@ func (w *WAL) entry(et WALEntryType, flag byte, buf []byte) error {
 const (
 	walSeriesSimple  = 1
 	walSamplesSimple = 1
+	walDeletesSimple = 1
 )
 
 var walBuffers = sync.Pool{}
@@ -355,7 +424,7 @@ func putWALBuffer(b []byte) {
 	walBuffers.Put(b)
 }
 
-func (w *WAL) encodeSeries(series []labels.Labels) error {
+func (w *SegmentWAL) encodeSeries(series []labels.Labels) error {
 	if len(series) == 0 {
 		return nil
 	}
@@ -381,7 +450,7 @@ func (w *WAL) encodeSeries(series []labels.Labels) error {
 	return w.entry(WALEntrySeries, walSeriesSimple, buf)
 }
 
-func (w *WAL) encodeSamples(samples []refdSample) error {
+func (w *SegmentWAL) encodeSamples(samples []RefSample) error {
 	if len(samples) == 0 {
 		return nil
 	}
@@ -395,67 +464,107 @@ func (w *WAL) encodeSamples(samples []refdSample) error {
 	// TODO(fabxc): optimize for all samples having the same timestamp.
 	first := samples[0]
 
-	binary.BigEndian.PutUint64(b, first.ref)
+	binary.BigEndian.PutUint64(b, first.Ref)
 	buf = append(buf, b[:8]...)
-	binary.BigEndian.PutUint64(b, uint64(first.t))
+	binary.BigEndian.PutUint64(b, uint64(first.T))
 	buf = append(buf, b[:8]...)
 
 	for _, s := range samples {
-		n := binary.PutVarint(b, int64(s.ref)-int64(first.ref))
+		n := binary.PutVarint(b, int64(s.Ref)-int64(first.Ref))
 		buf = append(buf, b[:n]...)
 
-		n = binary.PutVarint(b, s.t-first.t)
+		n = binary.PutVarint(b, s.T-first.T)
 		buf = append(buf, b[:n]...)
 
-		binary.BigEndian.PutUint64(b, math.Float64bits(s.v))
+		binary.BigEndian.PutUint64(b, math.Float64bits(s.V))
 		buf = append(buf, b[:8]...)
 	}
 
 	return w.entry(WALEntrySamples, walSamplesSimple, buf)
 }
 
-// WALReader decodes and emits write ahead log entries.
-type WALReader struct {
+func (w *SegmentWAL) encodeDeletes(stones []Stone) error {
+	b := make([]byte, 2*binary.MaxVarintLen64)
+	eb := &encbuf{b: b}
+	buf := getWALBuffer()
+	for _, s := range stones {
+		for _, itv := range s.intervals {
+			eb.reset()
+			eb.putUvarint32(s.ref)
+			eb.putVarint64(itv.mint)
+			eb.putVarint64(itv.maxt)
+			buf = append(buf, eb.get()...)
+		}
+	}
+
+	return w.entry(WALEntryDeletes, walDeletesSimple, buf)
+}
+
+// walReader decodes and emits write ahead log entries.
+type walReader struct {
 	logger log.Logger
 
-	wal   *WAL
+	wal   *SegmentWAL
 	cur   int
 	buf   []byte
 	crc32 hash.Hash32
 
-	err     error
-	labels  []labels.Labels
-	samples []refdSample
+	curType WALEntryType
+	curFlag byte
+	curBuf  []byte
+
+	err error
 }
 
-// NewWALReader returns a new WALReader over the sequence of the given ReadClosers.
-func NewWALReader(logger log.Logger, w *WAL) *WALReader {
-	if logger == nil {
-		logger = log.NewNopLogger()
+func newWALReader(w *SegmentWAL, l log.Logger) *walReader {
+	if l == nil {
+		l = log.NewNopLogger()
 	}
-	r := &WALReader{
-		logger: logger,
+	return &walReader{
+		logger: l,
 		wal:    w,
 		buf:    make([]byte, 0, 128*4096),
 		crc32:  crc32.New(crc32.MakeTable(crc32.Castagnoli)),
 	}
-	return r
-}
-
-// At returns the last decoded entry of labels or samples.
-// The returned slices are only valid until the next call to Next(). Their elements
-// have to be copied to preserve them.
-func (r *WALReader) At() ([]labels.Labels, []refdSample) {
-	return r.labels, r.samples
 }
 
 // Err returns the last error the reader encountered.
-func (r *WALReader) Err() error {
+func (r *walReader) Err() error {
 	return r.err
 }
 
+func (r *walReader) Read(seriesf SeriesCB, samplesf SamplesCB, deletesf DeletesCB) error {
+	for r.next() {
+		et, flag, b := r.at()
+		// In decoding below we never return a walCorruptionErr for now.
+		// Those should generally be catched by entry decoding before.
+		switch et {
+		case WALEntrySeries:
+			s, err := r.decodeSeries(flag, b)
+			if err != nil {
+				return err
+			}
+			seriesf(s)
+		case WALEntrySamples:
+			s, err := r.decodeSamples(flag, b)
+			if err != nil {
+				return err
+			}
+			samplesf(s)
+		case WALEntryDeletes:
+			s, err := r.decodeDeletes(flag, b)
+			if err != nil {
+				return err
+			}
+			deletesf(s)
+		}
+	}
+
+	return r.Err()
+}
+
 // nextEntry retrieves the next entry. It is also used as a testing hook.
-func (r *WALReader) nextEntry() (WALEntryType, byte, []byte, error) {
+func (r *walReader) nextEntry() (WALEntryType, byte, []byte, error) {
 	if r.cur >= len(r.wal.files) {
 		return 0, 0, nil, io.EOF
 	}
@@ -476,12 +585,13 @@ func (r *WALReader) nextEntry() (WALEntryType, byte, []byte, error) {
 	return et, flag, b, err
 }
 
-// Next returns decodes the next entry pair and returns true
-// if it was succesful.
-func (r *WALReader) Next() bool {
-	r.labels = r.labels[:0]
-	r.samples = r.samples[:0]
+func (r *walReader) at() (WALEntryType, byte, []byte) {
+	return r.curType, r.curFlag, r.curBuf
+}
 
+// next returns decodes the next entry pair and returns true
+// if it was succesful.
+func (r *walReader) next() bool {
 	if r.cur >= len(r.wal.files) {
 		return false
 	}
@@ -508,7 +618,7 @@ func (r *WALReader) Next() bool {
 			return false
 		}
 		r.cur++
-		return r.Next()
+		return r.next()
 	}
 	if err != nil {
 		r.err = err
@@ -519,28 +629,18 @@ func (r *WALReader) Next() bool {
 		return false
 	}
 
-	// In decoding below we never return a walCorruptionErr for now.
-	// Those should generally be catched by entry decoding before.
-
-	switch et {
-	case WALEntrySamples:
-		if err := r.decodeSamples(flag, b); err != nil {
-			r.err = err
-		}
-	case WALEntrySeries:
-		if err := r.decodeSeries(flag, b); err != nil {
-			r.err = err
-		}
-	}
+	r.curType = et
+	r.curFlag = flag
+	r.curBuf = b
 	return r.err == nil
 }
 
-func (r *WALReader) current() *os.File {
+func (r *walReader) current() *os.File {
 	return r.wal.files[r.cur]
 }
 
 // truncate the WAL after the last valid entry.
-func (r *WALReader) truncate(lastOffset int64) error {
+func (r *walReader) truncate(lastOffset int64) error {
 	r.logger.Log("msg", "WAL corruption detected; truncating",
 		"err", r.err, "file", r.current().Name(), "pos", lastOffset)
 
@@ -568,7 +668,7 @@ func walCorruptionErrf(s string, args ...interface{}) error {
 	return walCorruptionErr(errors.Errorf(s, args...))
 }
 
-func (r *WALReader) entry(cr io.Reader) (WALEntryType, byte, []byte, error) {
+func (r *walReader) entry(cr io.Reader) (WALEntryType, byte, []byte, error) {
 	r.crc32.Reset()
 	tr := io.TeeReader(cr, r.crc32)
 
@@ -588,7 +688,7 @@ func (r *WALReader) entry(cr io.Reader) (WALEntryType, byte, []byte, error) {
 	if etype == 0 {
 		return 0, 0, nil, io.EOF
 	}
-	if etype != WALEntrySeries && etype != WALEntrySamples {
+	if etype != WALEntrySeries && etype != WALEntrySamples && etype != WALEntryDeletes {
 		return 0, 0, nil, walCorruptionErrf("invalid entry type %d", etype)
 	}
 
@@ -615,11 +715,12 @@ func (r *WALReader) entry(cr io.Reader) (WALEntryType, byte, []byte, error) {
 	return etype, flag, buf, nil
 }
 
-func (r *WALReader) decodeSeries(flag byte, b []byte) error {
+func (r *walReader) decodeSeries(flag byte, b []byte) ([]labels.Labels, error) {
+	series := []labels.Labels{}
 	for len(b) > 0 {
 		l, n := binary.Uvarint(b)
 		if n < 1 {
-			return errors.Wrap(errInvalidSize, "number of labels")
+			return nil, errors.Wrap(errInvalidSize, "number of labels")
 		}
 		b = b[n:]
 		lset := make(labels.Labels, l)
@@ -627,27 +728,29 @@ func (r *WALReader) decodeSeries(flag byte, b []byte) error {
 		for i := 0; i < int(l); i++ {
 			nl, n := binary.Uvarint(b)
 			if n < 1 || len(b) < n+int(nl) {
-				return errors.Wrap(errInvalidSize, "label name")
+				return nil, errors.Wrap(errInvalidSize, "label name")
 			}
 			lset[i].Name = string(b[n : n+int(nl)])
 			b = b[n+int(nl):]
 
 			vl, n := binary.Uvarint(b)
 			if n < 1 || len(b) < n+int(vl) {
-				return errors.Wrap(errInvalidSize, "label value")
+				return nil, errors.Wrap(errInvalidSize, "label value")
 			}
 			lset[i].Value = string(b[n : n+int(vl)])
 			b = b[n+int(vl):]
 		}
 
-		r.labels = append(r.labels, lset)
+		series = append(series, lset)
 	}
-	return nil
+	return series, nil
 }
 
-func (r *WALReader) decodeSamples(flag byte, b []byte) error {
+func (r *walReader) decodeSamples(flag byte, b []byte) ([]RefSample, error) {
+	samples := []RefSample{}
+
 	if len(b) < 16 {
-		return errors.Wrap(errInvalidSize, "header length")
+		return nil, errors.Wrap(errInvalidSize, "header length")
 	}
 	var (
 		baseRef  = binary.BigEndian.Uint64(b)
@@ -656,30 +759,48 @@ func (r *WALReader) decodeSamples(flag byte, b []byte) error {
 	b = b[16:]
 
 	for len(b) > 0 {
-		var smpl refdSample
+		var smpl RefSample
 
 		dref, n := binary.Varint(b)
 		if n < 1 {
-			return errors.Wrap(errInvalidSize, "sample ref delta")
+			return nil, errors.Wrap(errInvalidSize, "sample ref delta")
 		}
 		b = b[n:]
 
-		smpl.ref = uint64(int64(baseRef) + dref)
+		smpl.Ref = uint64(int64(baseRef) + dref)
 
 		dtime, n := binary.Varint(b)
 		if n < 1 {
-			return errors.Wrap(errInvalidSize, "sample timestamp delta")
+			return nil, errors.Wrap(errInvalidSize, "sample timestamp delta")
 		}
 		b = b[n:]
-		smpl.t = baseTime + dtime
+		smpl.T = baseTime + dtime
 
 		if len(b) < 8 {
-			return errors.Wrapf(errInvalidSize, "sample value bits %d", len(b))
+			return nil, errors.Wrapf(errInvalidSize, "sample value bits %d", len(b))
 		}
-		smpl.v = float64(math.Float64frombits(binary.BigEndian.Uint64(b)))
+		smpl.V = float64(math.Float64frombits(binary.BigEndian.Uint64(b)))
 		b = b[8:]
 
-		r.samples = append(r.samples, smpl)
+		samples = append(samples, smpl)
 	}
-	return nil
+	return samples, nil
+}
+
+func (r *walReader) decodeDeletes(flag byte, b []byte) ([]Stone, error) {
+	db := &decbuf{b: b}
+	stones := []Stone{}
+
+	for db.len() > 0 {
+		var s Stone
+		s.ref = db.uvarint32()
+		s.intervals = intervals{{db.varint64(), db.varint64()}}
+		if db.err() != nil {
+			return nil, db.err()
+		}
+
+		stones = append(stones, s)
+	}
+
+	return stones, nil
 }
