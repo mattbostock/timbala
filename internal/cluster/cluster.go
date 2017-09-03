@@ -9,9 +9,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/golang/groupcache/consistenthash"
 	"github.com/hashicorp/memberlist"
+	"github.com/sirupsen/logrus"
 )
 
 const (

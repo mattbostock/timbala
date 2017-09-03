@@ -8,7 +8,6 @@ import (
 	"os"
 	"time"
 
-	log "github.com/Sirupsen/logrus"
 	v1API "github.com/mattbostock/athensdb/internal/api/v1"
 	"github.com/mattbostock/athensdb/internal/cluster"
 	"github.com/mattbostock/athensdb/internal/write"
@@ -17,6 +16,7 @@ import (
 	"github.com/prometheus/common/route"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage/tsdb"
+	log "github.com/sirupsen/logrus"
 	"golang.org/x/net/context"
 	"gopkg.in/alecthomas/kingpin.v2"
 )
