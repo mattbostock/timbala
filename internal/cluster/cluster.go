@@ -70,11 +70,6 @@ func Join(config *Config) error {
 	return nil
 }
 
-func SeriesPrimaryKey(salt []byte, end time.Time) string {
-	// FIXME filter quantile and le when hashing for data locality?
-	return fmt.Sprintf("%s%s", salt, end.Format(primaryKeyDateFormat))
-}
-
 type Node struct {
 	mln *memberlist.Node
 }
@@ -130,7 +125,7 @@ func (nodes Nodes) FilterBySeries(salt []byte, timestamp time.Time) Nodes {
 	sort.SliceStable(nodes, func(i, j int) bool { return nodes[i].Name() < nodes[j].Name() })
 
 	for i := 0; i < c.replicationFactor; i++ {
-		nodeName := c.ring.Get(strconv.Itoa(i) + SeriesPrimaryKey(salt, timestamp))
+		nodeName := c.ring.Get(strconv.Itoa(i) + partitionKey(salt, timestamp))
 		for len(nodesUsed) < c.replicationFactor && len(nodesUsed) < len(nodes) {
 			for _, n := range nodes {
 				if n.Name() == nodeName || useNextNode {
@@ -146,6 +141,11 @@ func (nodes Nodes) FilterBySeries(salt []byte, timestamp time.Time) Nodes {
 		}
 	}
 	return retNodes
+}
+
+func partitionKey(salt []byte, end time.Time) string {
+	// FIXME filter quantile and le when hashing for data locality?
+	return fmt.Sprintf("%s%s", salt, end.Format(primaryKeyDateFormat))
 }
 
 type delegate struct{}
