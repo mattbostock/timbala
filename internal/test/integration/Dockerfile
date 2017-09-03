@@ -1,4 +1,4 @@
-FROM golang:1.8
+FROM golang:1.9
 LABEL maintainer="matt@mattbostock.com"
 
 WORKDIR /go/src/github.com/mattbostock/athensdb

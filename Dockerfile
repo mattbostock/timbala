@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.8 as build
+FROM golang:1.9 as build
 WORKDIR /go/src/github.com/mattbostock/athensdb
 RUN apt-get update
 RUN apt-get upgrade -y ca-certificates
