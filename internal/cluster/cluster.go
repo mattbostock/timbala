@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	hashringVnodes       = 1200
+	hashringVnodes       = 160
 	primaryKeyDateFormat = "20060102"
 	replicationFactor    = 3
 )
