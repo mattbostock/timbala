@@ -66,20 +66,6 @@ func Join(config *Config) error {
 	return nil
 }
 
-func GetNodesForSeries(salt []byte, series labels.Labels, timestamp time.Time) []*Node {
-	// FIXME cache hashmap of names to nodes?
-	var nodes []*Node
-	for i := 0; i < replicationFactor; i++ {
-		nodeName := c.ring.Get(strconv.Itoa(i) + SeriesPrimaryKey(salt, timestamp))
-		for _, n := range Nodes() {
-			if n.Name() == nodeName {
-				nodes = append(nodes, n)
-			}
-		}
-	}
-	return nodes
-}
-
 func SeriesPrimaryKey(salt []byte, end time.Time) string {
 	// FIXME filter quantile and le when hashing for data locality?
 	return fmt.Sprintf("%s%s", salt, end.Format(primaryKeyDateFormat))
@@ -118,7 +104,7 @@ func LocalNode() *Node {
 	return &Node{c.ml.LocalNode()}
 }
 
-func Nodes() (nodes []*Node) {
+func GetNodes() (nodes Nodes) {
 	if c.ml == nil {
 		panic("Not yet joined a cluster")
 	}
@@ -126,6 +112,22 @@ func Nodes() (nodes []*Node) {
 		nodes = append(nodes, &Node{n})
 	}
 	return
+}
+
+type Nodes []*Node
+
+func (nodes Nodes) FilterBySeries(salt []byte, series labels.Labels, timestamp time.Time) Nodes {
+	// FIXME cache hashmap of names to nodes?
+	var retNodes Nodes
+	for i := 0; i < replicationFactor; i++ {
+		nodeName := c.ring.Get(strconv.Itoa(i) + SeriesPrimaryKey(salt, timestamp))
+		for _, n := range nodes {
+			if n.Name() == nodeName {
+				retNodes = append(retNodes, n)
+			}
+		}
+	}
+	return retNodes
 }
 
 type delegate struct{}

@@ -149,7 +149,7 @@ func main() {
 	log.Infof("Starting AthensDB node %s", cluster.LocalNode())
 	log.Infof("Binding to %s for peer gossip; %s for HTTP", config.peerBindAddr, config.httpBindAddr)
 	log.Infof("Advertising to cluster as %s for peer gossip; %s for HTTP", config.peerAdvertiseAddr, config.httpAdvertiseAddr)
-	log.Infof("%d nodes in cluster: %s", len(cluster.Nodes()), cluster.Nodes())
+	log.Infof("%d nodes in cluster: %s", len(cluster.GetNodes()), cluster.GetNodes())
 	log.Fatal(http.ListenAndServe(config.httpBindAddr.String(), router))
 }
 

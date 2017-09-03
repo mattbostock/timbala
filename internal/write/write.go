@@ -57,8 +57,8 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// FIXME handle change in cluster size
-	samplesToNodes := make(sampleNodeMap, len(cluster.Nodes()))
-	for _, n := range cluster.Nodes() {
+	samplesToNodes := make(sampleNodeMap, len(cluster.GetNodes()))
+	for _, n := range cluster.GetNodes() {
 		samplesToNodes[*n] = make(seriesMap)
 	}
 
@@ -75,8 +75,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		for _, s := range ts.Samples {
 			timestamp := time.Unix(s.TimestampMs/1000, (s.TimestampMs-s.TimestampMs/1000)*1e6)
 			// FIXME: Avoid panic if the cluster is not yet initialised
-			nodes := cluster.GetNodesForSeries([]byte{}, m, timestamp)
-			for _, n := range nodes {
+			for _, n := range cluster.GetNodes().FilterBySeries([]byte{}, m, timestamp) {
 				if _, ok := samplesToNodes[*n][m.Hash()]; !ok {
 					samplesToNodes[*n][m.Hash()] = &timeseries{labels: m}
 				}
@@ -130,7 +129,7 @@ func localWrite(series seriesMap) error {
 
 func remoteWrite(sampleMap sampleNodeMap) error {
 	var wg sync.WaitGroup
-	var wgErrChan = make(chan error, len(cluster.Nodes()))
+	var wgErrChan = make(chan error, len(cluster.GetNodes()))
 	for node, nodeSamples := range sampleMap {
 		if len(nodeSamples) == 0 {
 			continue
