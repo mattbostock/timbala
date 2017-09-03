@@ -14,7 +14,6 @@ import (
 	"github.com/mattbostock/athensdb/internal/test/testutil"
 	"github.com/montanaflynn/stats"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
 )
 
 const (
@@ -59,7 +58,7 @@ func testSampleDistribution(t *testing.T, numTestNodes int, samples []model.Samp
 	var replicationSpread stats.Float64Data
 	for _, s := range samples {
 		spread := make(map[int]bool)
-		for _, n := range mockNodes.FilterBySeries([]byte{}, labels.Labels{}, s.Timestamp.Time()) {
+		for _, n := range mockNodes.FilterBySeries([]byte{}, s.Timestamp.Time()) {
 			i, err := strconv.Atoi(n.Name())
 			if err != nil {
 				t.Fatal(err)
