@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net"
+	"sort"
 	"strconv"
 	"time"
 
@@ -119,11 +120,25 @@ type Nodes []*Node
 func (nodes Nodes) FilterBySeries(salt []byte, series labels.Labels, timestamp time.Time) Nodes {
 	// FIXME cache hashmap of names to nodes?
 	var retNodes Nodes
+	nodesUsed := make(map[*Node]bool)
+	useNextNode := false
+
+	// Sort nodes to ensure function is deterministic
+	sort.SliceStable(nodes, func(i, j int) bool { return nodes[i].Name() < nodes[j].Name() })
+
 	for i := 0; i < replicationFactor; i++ {
 		nodeName := c.ring.Get(strconv.Itoa(i) + SeriesPrimaryKey(salt, timestamp))
-		for _, n := range nodes {
-			if n.Name() == nodeName {
-				retNodes = append(retNodes, n)
+		for len(nodesUsed) < replicationFactor && len(nodesUsed) < len(nodes) {
+			for _, n := range nodes {
+				if n.Name() == nodeName || useNextNode {
+					if _, ok := nodesUsed[n]; ok {
+						useNextNode = true
+						continue
+					}
+					retNodes = append(retNodes, n)
+					nodesUsed[n] = true
+					useNextNode = false
+				}
 			}
 		}
 	}
