@@ -18,7 +18,7 @@ savedeps:
 	@govendor add +external
 
 test:
-	@go test -race $(shell go list ./... | grep -v /vendor/)
+	@go test -race ./...
 
 servedocs:
 	@docker run --rm -it -p 8000:8000 -v `pwd`:/docs squidfunk/mkdocs-material:$(MKDOCS_MATERIAL_VERSION)
