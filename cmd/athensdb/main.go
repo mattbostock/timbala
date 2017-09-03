@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"net"
 	"net/http"
 	"os"
@@ -110,7 +111,7 @@ func main() {
 		AppendableBlocks: 2,
 		MinBlockDuration: 2 * time.Hour,
 		MaxBlockDuration: 36 * time.Hour,
-		Retention:        15 * 24 * time.Hour,
+		Retention:        time.Duration(math.MaxInt64), // approximately 290 years
 	})
 	if err != nil {
 		log.Fatalf("Opening storage failed: %s", err)
