@@ -12,7 +12,6 @@ import (
 	"github.com/Sirupsen/logrus"
 	"github.com/golang/groupcache/consistenthash"
 	"github.com/hashicorp/memberlist"
-	"github.com/prometheus/prometheus/pkg/labels"
 )
 
 const (
@@ -121,7 +120,7 @@ func GetNodes() (nodes Nodes) {
 
 type Nodes []*Node
 
-func (nodes Nodes) FilterBySeries(salt []byte, series labels.Labels, timestamp time.Time) Nodes {
+func (nodes Nodes) FilterBySeries(salt []byte, timestamp time.Time) Nodes {
 	// FIXME cache hashmap of names to nodes?
 	var retNodes Nodes
 	nodesUsed := make(map[*Node]bool)
