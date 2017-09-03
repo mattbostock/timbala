@@ -22,8 +22,9 @@ const (
 )
 
 var (
-	samples          []model.Sample
-	testClusterSizes = [...]int{1, replicationFactor, 5, 11, 59}
+	samples                []model.Sample
+	testClusterSizes       = [...]int{1, c.replicationFactor, 19}
+	testReplicationFactors = [...]int{1, c.replicationFactor, 19}
 )
 
 func TestMain(m *testing.M) {
@@ -33,7 +34,10 @@ func TestMain(m *testing.M) {
 
 func TestHashringDistribution(t *testing.T) {
 	for _, numTestNodes := range testClusterSizes {
-		testSampleDistribution(t, numTestNodes, samples)
+		for _, replFactor := range testReplicationFactors {
+			c.replicationFactor = replFactor
+			testSampleDistribution(t, numTestNodes, samples)
+		}
 	}
 }
 
@@ -43,7 +47,7 @@ func testSampleDistribution(t *testing.T, numTestNodes int, samples []model.Samp
 		mockNodes Nodes
 	)
 
-	c.ring = consistenthash.New(replicationFactor*hashringVnodes, nil)
+	c.ring = consistenthash.New(c.replicationFactor*hashringVnodes, nil)
 
 	// Add mock nodes to ring
 	for i := 0; i < numTestNodes; i++ {
@@ -67,11 +71,11 @@ func testSampleDistribution(t *testing.T, numTestNodes int, samples []model.Samp
 		replicationSpread = append(replicationSpread, float64(len(spread)))
 	}
 
-	fmt.Printf("Distribution of samples when replication factor is %d across a cluster of %d nodes:\n\n", replicationFactor, numTestNodes)
+	fmt.Printf("Distribution of samples when replication factor is %d across a cluster of %d nodes:\n\n", c.replicationFactor, numTestNodes)
 	var sampleData stats.Float64Data
 
 	for i := 0; i < len(buckets); i++ {
-		percent := float64(len(buckets[i])) / float64(len(samples)*replicationFactor) * 100
+		percent := float64(len(buckets[i])) / float64(len(samples)*c.replicationFactor) * 100
 		fmt.Printf("Node %-2d: %-100s %5.2f%%; %d samples\n", i, strings.Repeat("#", int(percent)), percent, len(buckets[i]))
 		sampleData = append(sampleData, float64(len(buckets[i])))
 	}
@@ -125,7 +129,7 @@ func testSampleDistribution(t *testing.T, numTestNodes int, samples []model.Samp
 		t.Fatal(err)
 	}
 
-	fmt.Printf("Distribution of %d replicas across %d nodes:\n\n", replicationFactor, numTestNodes)
+	fmt.Printf("Distribution of %d replicas across %d nodes:\n\n", c.replicationFactor, numTestNodes)
 	for i := 0; i <= int(replMax); i++ {
 		samplesInBucket := 0
 		for _, j := range replicationSpread {
@@ -152,17 +156,17 @@ func testSampleDistribution(t *testing.T, numTestNodes int, samples []model.Samp
 		t.Fatalf("Not all samples accounted for in replication spread summary; expected %d, got %d", len(replicationSpread), len(samples))
 	}
 
-	if replMean != replicationFactor && replMean < float64(numTestNodes) {
-		t.Fatalf("Samples are not replicated across exactly %d nodes", replicationFactor)
+	if replMean != float64(c.replicationFactor) && replMean < float64(numTestNodes) {
+		t.Fatalf("Samples are not replicated across exactly %d nodes", c.replicationFactor)
 	}
 
 	if min == 0 {
 		t.Fatal("Some nodes received zero samples")
 	}
-	if expected := float64(numSamples) * math.Min(float64(replicationFactor), float64(numTestNodes)); sum != expected {
+	if expected := float64(numSamples) * math.Min(float64(c.replicationFactor), float64(numTestNodes)); sum != expected {
 		t.Fatalf("Not all samples accounted for, found %.0f but expected %.0f", sum, expected)
 	}
 	if stddev > float64(numSamples/10) {
-		t.Fatalf("Samples not well distributed, standard deviation is %.2f for %d samples over %d nodes", stddev, numSamples*replicationFactor, numTestNodes)
+		t.Fatalf("Samples not well distributed, standard deviation is %.2f for %d samples over %d nodes", stddev, numSamples*c.replicationFactor, numTestNodes)
 	}
 }

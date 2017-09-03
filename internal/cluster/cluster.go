@@ -18,14 +18,18 @@ import (
 const (
 	hashringVnodes       = 160
 	primaryKeyDateFormat = "20060102"
-	replicationFactor    = 3
 )
 
 var (
-	c struct {
+	c = struct {
 		c    *Config
 		ml   *memberlist.Memberlist
 		ring *consistenthash.Map
+		// Replication factor should never change except in tests.
+		// It's not a constant because it is changed during the tests.
+		replicationFactor int
+	}{
+		replicationFactor: 3,
 	}
 	log *logrus.Logger
 )
@@ -57,7 +61,7 @@ func Join(config *Config) error {
 	c.c = config
 	// FIXME: Make dynamic with cluster size else distribution will degrade
 	// as nodes are added
-	c.ring = consistenthash.New(replicationFactor*hashringVnodes, nil)
+	c.ring = consistenthash.New(c.replicationFactor*hashringVnodes, nil)
 
 	var err error
 	if c.ml, err = memberlist.Create(memberConf); err != nil {
@@ -126,9 +130,9 @@ func (nodes Nodes) FilterBySeries(salt []byte, series labels.Labels, timestamp t
 	// Sort nodes to ensure function is deterministic
 	sort.SliceStable(nodes, func(i, j int) bool { return nodes[i].Name() < nodes[j].Name() })
 
-	for i := 0; i < replicationFactor; i++ {
+	for i := 0; i < c.replicationFactor; i++ {
 		nodeName := c.ring.Get(strconv.Itoa(i) + SeriesPrimaryKey(salt, timestamp))
-		for len(nodesUsed) < replicationFactor && len(nodesUsed) < len(nodes) {
+		for len(nodesUsed) < c.replicationFactor && len(nodesUsed) < len(nodes) {
 			for _, n := range nodes {
 				if n.Name() == nodeName || useNextNode {
 					if _, ok := nodesUsed[n]; ok {
