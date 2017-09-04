@@ -45,8 +45,6 @@ services:
       - '-storage.local.engine=none'
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
-    environment:
-      PEERS: athensdb_1,athensdb_2
     depends_on:
       - load_balancer
   load_balancer:
