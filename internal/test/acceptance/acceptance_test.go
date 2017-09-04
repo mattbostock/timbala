@@ -15,10 +15,10 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/snappy"
-	"github.com/mattbostock/athensdb/internal/remote"
 	"github.com/mattbostock/athensdb/internal/test/testutil"
 	"github.com/mattbostock/athensdb/internal/write"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/prompb"
 )
 
 // FIXME: Ensure that the binary is the one output by the Makefile and not some
@@ -149,31 +149,31 @@ func run(args ...string) *exec.Cmd {
 	return cmd
 }
 
-func generateRemoteRequest(sample model.Sample) *remote.WriteRequest {
-	req := &remote.WriteRequest{
-		Timeseries: make([]*remote.TimeSeries, 0, 1),
+func generateRemoteRequest(sample model.Sample) *prompb.WriteRequest {
+	req := &prompb.WriteRequest{
+		Timeseries: make([]*prompb.TimeSeries, 0, 1),
 	}
-	ts := &remote.TimeSeries{
-		Labels: make([]*remote.LabelPair, 0, len(sample.Metric)),
+	ts := &prompb.TimeSeries{
+		Labels: make([]*prompb.Label, 0, len(sample.Metric)),
 	}
 	for k, v := range sample.Metric {
 		ts.Labels = append(ts.Labels,
-			&remote.LabelPair{
+			&prompb.Label{
 				Name:  string(k),
 				Value: string(v),
 			})
 	}
-	ts.Samples = []*remote.Sample{
+	ts.Samples = []*prompb.Sample{
 		{
-			Value:       float64(sample.Value),
-			TimestampMs: int64(sample.Timestamp),
+			Value:     float64(sample.Value),
+			Timestamp: int64(sample.Timestamp),
 		},
 	}
 	req.Timeseries = append(req.Timeseries, ts)
 	return req
 }
 
-func postWriteRequest(req *remote.WriteRequest) (*http.Response, error) {
+func postWriteRequest(req *prompb.WriteRequest) (*http.Response, error) {
 	data, err := proto.Marshal(req)
 	if err != nil {
 		return nil, err

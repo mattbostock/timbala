@@ -86,6 +86,12 @@
   version = "v1.6.0"
 
 [[projects]]
+  name = "github.com/gogo/protobuf"
+  packages = ["proto","sortkeys","types"]
+  revision = "100ba4e885062801d56799d78530b73b178a78f3"
+  version = "v0.4"
+
+[[projects]]
   branch = "master"
   name = "github.com/golang/groupcache"
   packages = ["consistenthash"]
@@ -94,7 +100,7 @@
 [[projects]]
   branch = "master"
   name = "github.com/golang/protobuf"
-  packages = ["proto"]
+  packages = ["jsonpb","proto","protoc-gen-go/descriptor","ptypes","ptypes/any","ptypes/duration","ptypes/struct","ptypes/timestamp"]
   revision = "17ce1425424ab154092bbb43af630bd647f3bb0d"
 
 [[projects]]
@@ -102,6 +108,12 @@
   name = "github.com/golang/snappy"
   packages = ["."]
   revision = "553a641470496b2327abcac10b36396bd98e45c9"
+
+[[projects]]
+  name = "github.com/grpc-ecosystem/grpc-gateway"
+  packages = ["runtime","runtime/internal","utilities"]
+  revision = "589b126116b5fc961939b3e156c29e4d9d58222f"
+  version = "v1.2.2"
 
 [[projects]]
   branch = "master"
@@ -231,7 +243,7 @@
 
 [[projects]]
   name = "github.com/prometheus/prometheus"
-  packages = ["config","pkg/labels","pkg/textparse","pkg/timestamp","pkg/value","promql","storage","storage/tsdb","util/httputil","util/stats","util/strutil","util/testutil"]
+  packages = ["config","pkg/labels","pkg/textparse","pkg/timestamp","pkg/value","prompb","promql","storage","storage/tsdb","util/httputil","util/stats","util/strutil","util/testutil"]
   revision = "a52f082939a566d5269671e98be06fc6bdf61d09"
   version = "v2.0.0-beta.2"
 
@@ -261,7 +273,7 @@
 [[projects]]
   branch = "master"
   name = "golang.org/x/net"
-  packages = ["context","context/ctxhttp"]
+  packages = ["context","context/ctxhttp","http2","http2/hpack","idna","internal/timeseries","lex/httplex","trace"]
   revision = "66aacef3dd8a676686c7ae3716979581e8b03c47"
 
 [[projects]]
@@ -275,6 +287,24 @@
   name = "golang.org/x/sys"
   packages = ["unix","windows","windows/registry","windows/svc/eventlog"]
   revision = "7ddbeae9ae08c6a06a59597f0c9edbc5ff2444ce"
+
+[[projects]]
+  branch = "master"
+  name = "golang.org/x/text"
+  packages = ["internal/gen","internal/triegen","internal/ucd","secure/bidirule","transform","unicode/bidi","unicode/cldr","unicode/norm","unicode/rangetable"]
+  revision = "bd91bbf73e9a4a801adbfb97133c992678533126"
+
+[[projects]]
+  branch = "master"
+  name = "google.golang.org/genproto"
+  packages = ["googleapis/api/annotations","googleapis/rpc/status"]
+  revision = "595979c8a7bf586b2d293fb42246bf91a0b893d9"
+
+[[projects]]
+  name = "google.golang.org/grpc"
+  packages = [".","codes","connectivity","credentials","grpclb/grpc_lb_v1/messages","grpclog","internal","keepalive","metadata","naming","peer","stats","status","tap","transport"]
+  revision = "f92cdcd7dcdc69e81b2d7b338479a19a8723cfa3"
+  version = "v1.6.0"
 
 [[projects]]
   name = "gopkg.in/alecthomas/kingpin.v2"
@@ -291,6 +321,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "ba0e9045403e24662c8891e7320057c098ec543e8c53f71ad2f91d58bd37c5aa"
+  inputs-digest = "a816b9d938ce95e5e305b1ffa39ffc6c93aba34f0538133812e80474cac6e371"
   solver-name = "gps-cdcl"
   solver-version = 1

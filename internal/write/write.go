@@ -13,8 +13,8 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/mattbostock/athensdb/internal/cluster"
-	"github.com/mattbostock/athensdb/internal/remote"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/prompb"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/net/context/ctxhttp"
@@ -50,7 +50,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req remote.WriteRequest
+	var req prompb.WriteRequest
 	if err := proto.Unmarshal(reqBuf, &req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -73,7 +73,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		sort.Sort(m)
 
 		for _, s := range ts.Samples {
-			timestamp := time.Unix(s.TimestampMs/1000, (s.TimestampMs-s.TimestampMs/1000)*1e6)
+			timestamp := time.Unix(s.Timestamp/1000, (s.Timestamp-s.Timestamp/1000)*1e6)
 			// FIXME: Avoid panic if the cluster is not yet initialised
 			for _, n := range cluster.GetNodes().FilterBySeries([]byte{}, timestamp) {
 				if _, ok := samplesToNodes[*n][m.Hash()]; !ok {
@@ -119,7 +119,7 @@ func localWrite(series seriesMap) error {
 	for _, sseries := range series {
 		for _, s := range sseries.samples {
 			// FIXME: Look at using AddFast
-			appender.Add(sseries.labels, s.TimestampMs, s.Value)
+			appender.Add(sseries.labels, s.Timestamp, s.Value)
 		}
 	}
 	// Intentionally avoid defer on hot path
@@ -148,25 +148,25 @@ func remoteWrite(sampleMap sampleNodeMap) error {
 			}
 			apiURL := fmt.Sprintf("%s%s%s", "http://", httpAddr, Route)
 
-			req := &remote.WriteRequest{
-				Timeseries: make([]*remote.TimeSeries, 0, len(nSamples)),
+			req := &prompb.WriteRequest{
+				Timeseries: make([]*prompb.TimeSeries, 0, len(nSamples)),
 			}
 			for _, series := range nSamples {
 				for _, s := range series.samples {
-					ts := &remote.TimeSeries{
-						Labels: make([]*remote.LabelPair, 0, len(series.labels)),
+					ts := &prompb.TimeSeries{
+						Labels: make([]*prompb.Label, 0, len(series.labels)),
 					}
 					for _, l := range series.labels {
 						ts.Labels = append(ts.Labels,
-							&remote.LabelPair{
+							&prompb.Label{
 								Name:  l.Name,
 								Value: l.Value,
 							})
 					}
-					ts.Samples = []*remote.Sample{
+					ts.Samples = []*prompb.Sample{
 						{
-							Value:       float64(s.Value),
-							TimestampMs: int64(s.TimestampMs),
+							Value:     float64(s.Value),
+							Timestamp: int64(s.Timestamp),
 						},
 					}
 					req.Timeseries = append(req.Timeseries, ts)
@@ -218,5 +218,5 @@ type seriesMap map[uint64]*timeseries
 
 type timeseries struct {
 	labels  labels.Labels
-	samples []*remote.Sample
+	samples []*prompb.Sample
 }
