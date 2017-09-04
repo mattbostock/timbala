@@ -171,7 +171,7 @@ func (d *delegate) LocalState(join bool) []byte {
 func (d *delegate) MergeRemoteState(buf []byte, join bool) {}
 
 type nodeMeta struct {
-	HTTPAddr string `json:http_addr`
+	HTTPAddr string `json:"http_addr"`
 }
 
 type eventDelegate struct{}
