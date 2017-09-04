@@ -17,6 +17,7 @@ savedeps:
 	@dep ensure
 
 test:
+	@go vet ./...
 	@go test -race ./...
 
 servedocs:
