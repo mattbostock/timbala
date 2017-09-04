@@ -18,6 +18,7 @@ savedeps:
 
 test:
 	@go vet ./...
+	@go test ./internal/cluster
 	@go test -race ./...
 
 servedocs:
