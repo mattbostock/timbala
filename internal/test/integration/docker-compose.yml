@@ -35,7 +35,7 @@ services:
       - '--peer-advertise-addr=athensdb_3:7946'
       - '--peer-bind-addr=:7946'
       - '--peers=athensdb_1'
-      - '--peers=athensdb_3'
+      - '--peers=athensdb_2'
     depends_on:
       - athensdb_1
   prometheus:
