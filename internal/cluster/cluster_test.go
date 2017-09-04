@@ -35,7 +35,10 @@ func TestHashringDistribution(t *testing.T) {
 	for _, numTestNodes := range testClusterSizes {
 		for _, replFactor := range testReplicationFactors {
 			c.replicationFactor = replFactor
-			testSampleDistribution(t, numTestNodes, samples)
+			t.Run(fmt.Sprintf("%d replicas across %d nodes", replFactor, numTestNodes),
+				func(t *testing.T) {
+					testSampleDistribution(t, numTestNodes, samples)
+				})
 		}
 	}
 }
