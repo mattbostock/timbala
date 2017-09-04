@@ -24,6 +24,7 @@ install:
   - cp dep $HOME/gopath/bin/
 
 script:
+  - set -e
   - make testdeps
   - make build
   - make test
