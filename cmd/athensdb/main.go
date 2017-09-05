@@ -108,8 +108,8 @@ func main() {
 	}
 	log.SetLevel(lvl)
 
-	// FIXME: Set logger and Prometheus registry
-	localStorage, err := tsdb.Open("data", nil, nil, &tsdb.Options{
+	// FIXME: Set logger
+	localStorage, err := tsdb.Open("data", nil, prometheus.DefaultRegisterer, &tsdb.Options{
 		WALFlushInterval:  5 * time.Second,
 		RetentionDuration: math.MaxUint64, // approximately 292,471,208 years
 		BlockRanges:       tsdb.ExponentialBlockRanges(int64(2*time.Hour)/1e6, 3, 5),
