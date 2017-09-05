@@ -90,7 +90,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		err = localWrite(localSeries)
 		if err != nil {
 			// FIXME make error more useful
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 	}
@@ -105,7 +105,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	err = remoteWrite(samplesToNodes)
 	if err != nil {
 		// FIXME make error more useful
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 }
