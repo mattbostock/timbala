@@ -40,14 +40,14 @@ func GenerateDataSamples(numSamples int, seed int64, timeStep time.Duration) []m
 		for j := 0; j < numLabels; j++ {
 			if j > 0 {
 				for k := 0; k < r.Intn(maxLabelNameLength-minLabelNameLength)+minLabelNameLength; k++ {
-					buf.WriteRune(rune(int('a') + rand.Intn(lettersInAlphabet)))
+					buf.WriteRune(rune(int('a') + r.Intn(lettersInAlphabet)))
 				}
 				labelName = model.LabelName(buf.String())
 			}
 
 			buf.Reset()
 			for l := 0; l < r.Intn(maxLabelValueLength-1)+1; l++ {
-				buf.WriteRune(rune(int('a') + rand.Intn(lettersInAlphabet)))
+				buf.WriteRune(rune(int('a') + r.Intn(lettersInAlphabet)))
 			}
 			s.Metric[labelName] = model.LabelValue(buf.String())
 		}
