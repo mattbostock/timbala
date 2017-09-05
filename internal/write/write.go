@@ -40,6 +40,7 @@ func SetStore(s storage.Storage) {
 func Handler(w http.ResponseWriter, r *http.Request) {
 	compressed, err := ioutil.ReadAll(r.Body)
 	if err != nil {
+		log.Warningln(err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -89,7 +90,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	if ok {
 		err = localWrite(localSeries)
 		if err != nil {
-			// FIXME make error more useful
+			log.Warningln(err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -104,7 +105,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 
 	err = remoteWrite(samplesToNodes)
 	if err != nil {
-		// FIXME make error more useful
+		log.Warningln(err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
