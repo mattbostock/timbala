@@ -5,6 +5,7 @@ import (
 	"math"
 	"net"
 	"net/http"
+	"net/http/pprof"
 	"os"
 	"time"
 
@@ -127,6 +128,7 @@ func main() {
 
 	// FIXME: Set context
 	router := route.New()
+	router.Get("/debug/pprof/*subpath", pprof.Index)
 
 	var api = v1API.NewAPI(queryEngine, promtsdb.Adapter(localStorage))
 	api.Register(router.WithPrefix(apiRoute))
