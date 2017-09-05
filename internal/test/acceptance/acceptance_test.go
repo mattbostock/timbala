@@ -28,6 +28,26 @@ const executable = "athensdb"
 // FIXME: Set this explicitly when executing the binary
 var httpBaseURL = "http://localhost:9080"
 
+func TestPprof(t *testing.T) {
+	c := run()
+	defer teardown(c)
+
+	resp, err := http.Get(httpBaseURL + "/debug/pprof/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(string(body), "profiles:") {
+		t.Fatal("pprof endpoint inaccessible")
+	}
+}
+
 func TestMetrics(t *testing.T) {
 	c := run()
 	defer teardown(c)
