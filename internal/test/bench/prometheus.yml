@@ -1,0 +1,19 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: athensdb
+    static_configs:
+      - targets:
+          - athensdb_1:9080
+          - athensdb_2:9080
+          - athensdb_3:9080
+  - job_name: bench
+    static_configs:
+      - targets:
+        - bench:9000
+  - job_name: prometheus
+    static_configs:
+      - targets:
+        - localhost:9090

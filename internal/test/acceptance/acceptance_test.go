@@ -1,8 +1,6 @@
 package acceptance_test
 
 import (
-	"bytes"
-	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -13,12 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang/protobuf/proto"
-	"github.com/golang/snappy"
 	"github.com/mattbostock/athensdb/internal/test/testutil"
-	"github.com/mattbostock/athensdb/internal/write"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/prompb"
 )
 
 // FIXME: Ensure that the binary is the one output by the Makefile and not some
@@ -102,15 +96,15 @@ func TestRemoteWrite(t *testing.T) {
 	c := run()
 	defer teardown(c)
 
-	testSample := model.Sample{
+	testSample := &model.Sample{
 		Metric:    make(model.Metric, 1),
 		Value:     1234,
 		Timestamp: model.Now(),
 	}
 	testSample.Metric[model.MetricNameLabel] = "foo"
 
-	req := generateRemoteRequest(testSample)
-	resp, err := postWriteRequest(req)
+	req := testutil.GenerateRemoteRequest(model.Samples{testSample})
+	resp, err := testutil.PostWriteRequest(httpBaseURL, req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,15 +120,15 @@ func TestRemoteWriteThenQueryBack(t *testing.T) {
 
 	name := time.Now().Format("test_2006_01_02T15_04_05")
 
-	testSample := model.Sample{
+	testSample := &model.Sample{
 		Metric:    make(model.Metric, 1),
 		Value:     1234,
 		Timestamp: model.Now(),
 	}
 	testSample.Metric[model.MetricNameLabel] = model.LabelValue(name)
 
-	req := generateRemoteRequest(testSample)
-	resp, err := postWriteRequest(req)
+	req := testutil.GenerateRemoteRequest(model.Samples{testSample})
+	resp, err := testutil.PostWriteRequest(httpBaseURL, req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -170,47 +164,6 @@ func run(args ...string) *exec.Cmd {
 	}
 	waitForServer(httpBaseURL)
 	return cmd
-}
-
-func generateRemoteRequest(sample model.Sample) *prompb.WriteRequest {
-	req := &prompb.WriteRequest{
-		Timeseries: make([]*prompb.TimeSeries, 0, 1),
-	}
-	ts := &prompb.TimeSeries{
-		Labels: make([]*prompb.Label, 0, len(sample.Metric)),
-	}
-	for k, v := range sample.Metric {
-		ts.Labels = append(ts.Labels,
-			&prompb.Label{
-				Name:  string(k),
-				Value: string(v),
-			})
-	}
-	ts.Samples = []*prompb.Sample{
-		{
-			Value:     float64(sample.Value),
-			Timestamp: int64(sample.Timestamp),
-		},
-	}
-	req.Timeseries = append(req.Timeseries, ts)
-	return req
-}
-
-func postWriteRequest(req *prompb.WriteRequest) (*http.Response, error) {
-	data, err := proto.Marshal(req)
-	if err != nil {
-		return nil, err
-	}
-
-	compressed := snappy.Encode(nil, data)
-	u := fmt.Sprintf("%s%s", httpBaseURL, write.Route)
-	resp, err := http.Post(u, "snappy", bytes.NewBuffer(compressed))
-	if err != nil {
-		return nil, err
-	}
-	resp.Body.Close()
-
-	return resp, nil
 }
 
 func waitForServer(u string) {

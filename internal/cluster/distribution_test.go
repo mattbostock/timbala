@@ -23,7 +23,7 @@ const (
 )
 
 var (
-	samples                []model.Sample
+	samples                model.Samples
 	testClusterSizes       = [...]int{1, c.replicationFactor, 19}
 	testReplicationFactors = [...]int{1, c.replicationFactor, 19}
 )
@@ -45,9 +45,9 @@ func TestHashringDistribution(t *testing.T) {
 	}
 }
 
-func testSampleDistribution(t *testing.T, numTestNodes int, samples []model.Sample) {
+func testSampleDistribution(t *testing.T, numTestNodes int, samples model.Samples) {
 	var (
-		buckets   [][]model.Sample
+		buckets   []model.Samples
 		mockNodes Nodes
 	)
 
@@ -56,7 +56,7 @@ func testSampleDistribution(t *testing.T, numTestNodes int, samples []model.Samp
 	// Add mock nodes to ring
 	for i := 0; i < numTestNodes; i++ {
 		c.ring.Add(strconv.Itoa(i))
-		buckets = append(buckets, make([]model.Sample, 0, numSamples))
+		buckets = append(buckets, make(model.Samples, 0, numSamples))
 		mockNodes = append(mockNodes, &Node{mln: &memberlist.Node{Name: strconv.Itoa(i)}})
 	}
 
