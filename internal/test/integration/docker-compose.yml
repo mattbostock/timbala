@@ -12,6 +12,7 @@ services:
       - '--peer-bind-addr=:7946'
       - '--peers=athensdb_2'
       - '--peers=athensdb_3'
+    tmpfs: /data
   athensdb_2:
     image: mattbostock/athensdb
     hostname: athensdb_2
@@ -23,6 +24,7 @@ services:
       - '--peer-bind-addr=:7946'
       - '--peers=athensdb_1'
       - '--peers=athensdb_3'
+    tmpfs: /data
     depends_on:
       - athensdb_1
   athensdb_3:
@@ -36,6 +38,7 @@ services:
       - '--peer-bind-addr=:7946'
       - '--peers=athensdb_1'
       - '--peers=athensdb_2'
+    tmpfs: /data
     depends_on:
       - athensdb_1
   prometheus:
@@ -47,6 +50,7 @@ services:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
     depends_on:
       - load_balancer
+    tmpfs: /prometheus/data
   load_balancer:
     image: nginx:stable-alpine
     volumes:
