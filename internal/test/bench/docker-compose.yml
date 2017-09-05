@@ -1,0 +1,76 @@
+version: '3.2'
+services:
+  athensdb_1:
+    build: ../../../
+    image: mattbostock/athensdb
+    hostname: athensdb_1
+    command:
+      - '--log-level=debug'
+      - '--http-advertise-addr=athensdb_1:9080'
+      - '--http-bind-addr=:9080'
+      - '--peer-advertise-addr=athensdb_1:7946'
+      - '--peer-bind-addr=:7946'
+      - '--peers=athensdb_2'
+      - '--peers=athensdb_3'
+    ports:
+      - '9080:9080'
+    tmpfs: /data
+  athensdb_2:
+    image: mattbostock/athensdb
+    hostname: athensdb_2
+    command:
+      - '--log-level=debug'
+      - '--http-advertise-addr=athensdb_2:9080'
+      - '--http-bind-addr=:9080'
+      - '--peer-advertise-addr=athensdb_2:7946'
+      - '--peer-bind-addr=:7946'
+      - '--peers=athensdb_1'
+      - '--peers=athensdb_3'
+    ports:
+      - '9081:9080'
+    tmpfs: /data
+    depends_on:
+      - athensdb_1
+  athensdb_3:
+    image: mattbostock/athensdb
+    hostname: athensdb_3
+    command:
+      - '--log-level=debug'
+      - '--http-advertise-addr=athensdb_3:9080'
+      - '--http-bind-addr=:9080'
+      - '--peer-advertise-addr=athensdb_3:7946'
+      - '--peer-bind-addr=:7946'
+      - '--peers=athensdb_1'
+      - '--peers=athensdb_2'
+    tmpfs: /data
+    ports:
+      - '9082:9080'
+    depends_on:
+      - athensdb_1
+  prometheus:
+    image: prom/prometheus:v1.7.1
+    command:
+      - '-config.file=/etc/prometheus/prometheus.yml'
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - '9090:9090'
+    tmpfs: /prometheus/data
+    depends_on:
+      - load_balancer
+  load_balancer:
+    image: nginx:stable-alpine
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - '8080:80'
+    depends_on:
+      - athensdb_1
+      - athensdb_2
+      - athensdb_3
+  bench:
+    build:
+      context: ../../../
+      dockerfile: internal/test/bench/Dockerfile
+    depends_on:
+      - load_balancer
