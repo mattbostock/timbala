@@ -28,7 +28,7 @@ const executable = "athensdb"
 // FIXME: Set this explicitly when executing the binary
 var httpBaseURL = "http://localhost:9080"
 
-func TestBuildInfoMetric(t *testing.T) {
+func TestMetrics(t *testing.T) {
 	c := run()
 	defer teardown(c)
 
