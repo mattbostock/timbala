@@ -120,12 +120,13 @@ func (nodes Nodes) FilterBySeries(salt []byte, timestamp time.Time) Nodes {
 	var retNodes Nodes
 	nodesUsed := make(map[*Node]bool)
 	useNextNode := false
+	pKey := partitionKey(salt, timestamp)
 
 	// Sort nodes to ensure function is deterministic
 	sort.SliceStable(nodes, func(i, j int) bool { return nodes[i].Name() < nodes[j].Name() })
 
 	for i := 0; i < c.replicationFactor; i++ {
-		nodeName := c.ring.Get(strconv.Itoa(i) + partitionKey(salt, timestamp))
+		nodeName := c.ring.Get(strconv.Itoa(i) + pKey)
 		for len(nodesUsed) < c.replicationFactor && len(nodesUsed) < len(nodes) {
 			for _, n := range nodes {
 				if n.Name() == nodeName || useNextNode {
