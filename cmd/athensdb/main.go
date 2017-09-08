@@ -128,7 +128,19 @@ func main() {
 
 	// FIXME: Set context
 	router := route.New()
-	router.Get("/debug/pprof/*subpath", pprof.Index)
+	// Add debug endpoints manually; there's no easy way with this HTTP router library
+	dbg := router.WithPrefix("/debug/pprof")
+	dbg.Get("/", pprof.Index)
+	dbg.Get("/cmdline", pprof.Cmdline)
+	dbg.Get("/profile", pprof.Profile)
+	dbg.Get("/symbol", pprof.Symbol)
+	dbg.Post("/symbol", pprof.Symbol)
+	dbg.Get("/trace", pprof.Trace)
+	dbg.Get("/block", pprof.Handler("block").ServeHTTP)
+	dbg.Get("/goroutine", pprof.Handler("goroutine").ServeHTTP)
+	dbg.Get("/heap", pprof.Handler("heap").ServeHTTP)
+	dbg.Get("/mutex", pprof.Handler("mutex").ServeHTTP)
+	dbg.Get("/threadcreate", pprof.Handler("threadcreate").ServeHTTP)
 
 	var api = v1API.NewAPI(queryEngine, promtsdb.Adapter(localStorage))
 	api.Register(router.WithPrefix(apiRoute))
