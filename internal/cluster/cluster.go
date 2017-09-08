@@ -115,6 +115,10 @@ func GetNodes() (nodes Nodes) {
 
 type Nodes []*Node
 
+func (nodes Nodes) Len() int           { return len(nodes) }
+func (nodes Nodes) Less(i, j int) bool { return nodes[i].Name() < nodes[j].Name() }
+func (nodes Nodes) Swap(i, j int)      { nodes[i], nodes[j] = nodes[j], nodes[i] }
+
 func (nodes Nodes) FilterBySeries(salt []byte, timestamp time.Time) Nodes {
 	// FIXME cache hashmap of names to nodes?
 	var retNodes Nodes
@@ -123,7 +127,7 @@ func (nodes Nodes) FilterBySeries(salt []byte, timestamp time.Time) Nodes {
 	pKey := partitionKey(salt, timestamp)
 
 	// Sort nodes to ensure function is deterministic
-	sort.SliceStable(nodes, func(i, j int) bool { return nodes[i].Name() < nodes[j].Name() })
+	sort.Stable(nodes)
 
 	for i := 0; i < c.replicationFactor; i++ {
 		nodeName := c.ring.Get(strconv.Itoa(i) + pKey)
