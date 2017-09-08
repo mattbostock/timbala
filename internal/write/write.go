@@ -28,6 +28,7 @@ const (
 var (
 	store storage.Storage
 	log   *logrus.Logger
+	mu    sync.Mutex
 )
 
 func SetLogger(l *logrus.Logger) {
@@ -112,8 +113,10 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 }
 
 func localWrite(series seriesMap) error {
+	mu.Lock()
 	appender, err := store.Appender()
 	if err != nil {
+	        mu.Unlock()
 		return err
 	}
 
@@ -125,6 +128,7 @@ func localWrite(series seriesMap) error {
 	}
 	// Intentionally avoid defer on hot path
 	appender.Commit()
+	mu.Unlock()
 	return nil
 }
 
