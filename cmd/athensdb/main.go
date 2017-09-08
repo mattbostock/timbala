@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"net/http/pprof"
 	"os"
+	"runtime"
+	"strconv"
 	"time"
 
 	v1API "github.com/mattbostock/athensdb/internal/api/v1"
@@ -141,6 +143,24 @@ func main() {
 	dbg.Get("/heap", pprof.Handler("heap").ServeHTTP)
 	dbg.Get("/mutex", pprof.Handler("mutex").ServeHTTP)
 	dbg.Get("/threadcreate", pprof.Handler("threadcreate").ServeHTTP)
+	dbg.Get("/enable/block/:rate", func(w http.ResponseWriter, r *http.Request) {
+		rate, err := strconv.Atoi(route.Param(r.Context(), "rate"))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		runtime.SetBlockProfileRate(rate)
+		fmt.Fprintf(w, "Block profile rate set to %d", rate)
+	})
+	dbg.Get("/enable/mutex/:fraction", func(w http.ResponseWriter, r *http.Request) {
+		fraction, err := strconv.Atoi(route.Param(r.Context(), "fraction"))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		prevValue := runtime.SetMutexProfileFraction(fraction)
+		fmt.Fprintf(w, "Mutex profile fraction set to %d, previous value was: %d", fraction, prevValue)
+	})
 
 	var api = v1API.NewAPI(queryEngine, promtsdb.Adapter(localStorage))
 	api.Register(router.WithPrefix(apiRoute))
