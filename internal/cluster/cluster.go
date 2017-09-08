@@ -146,7 +146,10 @@ func (nodes Nodes) FilterBySeries(salt []byte, timestamp time.Time) Nodes {
 
 func partitionKey(salt []byte, end time.Time) string {
 	// FIXME filter quantile and le when hashing for data locality?
-	return fmt.Sprintf("%s%s", salt, end.Format(primaryKeyDateFormat))
+	buf := make([]byte, 0, len(salt)+len(primaryKeyDateFormat))
+	buf = append(buf, salt...)
+	buf = append(buf, end.Format(primaryKeyDateFormat)...)
+	return string(buf)
 }
 
 type delegate struct{}
