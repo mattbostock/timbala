@@ -160,25 +160,25 @@ func remoteWrite(sampleMap sampleNodeMap) error {
 				Timeseries: make([]*prompb.TimeSeries, 0, len(nSamples)),
 			}
 			for _, series := range nSamples {
+				ts := &prompb.TimeSeries{
+					Labels:  make([]*prompb.Label, 0, len(series.labels)),
+					Samples: make([]*prompb.Sample, 0, len(series.samples)),
+				}
+				for _, l := range series.labels {
+					ts.Labels = append(ts.Labels,
+						&prompb.Label{
+							Name:  l.Name,
+							Value: l.Value,
+						})
+				}
 				for _, s := range series.samples {
-					ts := &prompb.TimeSeries{
-						Labels: make([]*prompb.Label, 0, len(series.labels)),
-					}
-					for _, l := range series.labels {
-						ts.Labels = append(ts.Labels,
-							&prompb.Label{
-								Name:  l.Name,
-								Value: l.Value,
-							})
-					}
-					ts.Samples = []*prompb.Sample{
-						{
+					ts.Samples = append(ts.Samples,
+						&prompb.Sample{
 							Value:     float64(s.Value),
 							Timestamp: int64(s.Timestamp),
-						},
-					}
-					req.Timeseries = append(req.Timeseries, ts)
+						})
 				}
+				req.Timeseries = append(req.Timeseries, ts)
 			}
 
 			data, err := proto.Marshal(req)
