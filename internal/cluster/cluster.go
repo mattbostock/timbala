@@ -103,14 +103,15 @@ func LocalNode() *Node {
 	return &Node{c.ml.LocalNode()}
 }
 
-func GetNodes() (nodes Nodes) {
+func GetNodes() Nodes {
 	if c.ml == nil {
 		panic("Not yet joined a cluster")
 	}
+	nodes := make(Nodes, 0, len(c.ml.Members()))
 	for _, n := range c.ml.Members() {
 		nodes = append(nodes, &Node{n})
 	}
-	return
+	return nodes
 }
 
 type Nodes []*Node
@@ -121,8 +122,8 @@ func (nodes Nodes) Swap(i, j int)      { nodes[i], nodes[j] = nodes[j], nodes[i]
 
 func (nodes Nodes) FilterBySeries(salt []byte, timestamp time.Time) Nodes {
 	// FIXME cache hashmap of names to nodes?
-	var retNodes Nodes
-	nodesUsed := make(map[*Node]bool)
+	retNodes := make(Nodes, 0, len(nodes))
+	nodesUsed := make(map[*Node]bool, len(nodes))
 	useNextNode := false
 	pKey := partitionKey(salt, timestamp)
 

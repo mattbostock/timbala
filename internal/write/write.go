@@ -23,6 +23,8 @@ import (
 const (
 	HttpHeaderInternalWrite = "X-AthensDB-Internal-Write-Version"
 	Route                   = "/receive"
+
+	numPreallocTimeseries = 1e5
 )
 
 var (
@@ -52,7 +54,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req prompb.WriteRequest
+	var req = prompb.WriteRequest{Timeseries: make([]*prompb.TimeSeries, 0, numPreallocTimeseries)}
 	if err := proto.Unmarshal(reqBuf, &req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -61,7 +63,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	// FIXME handle change in cluster size
 	samplesToNodes := make(sampleNodeMap, len(cluster.GetNodes()))
 	for _, n := range cluster.GetNodes() {
-		samplesToNodes[*n] = make(seriesMap)
+		samplesToNodes[*n] = make(seriesMap, numPreallocTimeseries)
 	}
 
 	for _, ts := range req.Timeseries {
@@ -82,7 +84,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 			for _, n := range cluster.GetNodes().FilterBySeries([]byte{}, timestamp) {
 				if _, ok := samplesToNodes[*n][mHash]; !ok {
 					// FIXME handle change in cluster size
-					samplesToNodes[*n][mHash] = &timeseries{labels: m}
+					samplesToNodes[*n][mHash] = &timeseries{labels: m, samples: make([]*prompb.Sample, 0, len(ts.Samples))}
 				}
 				samplesToNodes[*n][mHash].samples = append(samplesToNodes[*n][mHash].samples, s)
 			}
