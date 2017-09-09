@@ -81,6 +81,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 			// FIXME: Avoid panic if the cluster is not yet initialised
 			for _, n := range cluster.GetNodes().FilterBySeries([]byte{}, timestamp) {
 				if _, ok := samplesToNodes[*n][mHash]; !ok {
+					// FIXME handle change in cluster size
 					samplesToNodes[*n][mHash] = &timeseries{labels: m}
 				}
 				samplesToNodes[*n][mHash].samples = append(samplesToNodes[*n][mHash].samples, s)
