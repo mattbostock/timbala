@@ -3,7 +3,6 @@
 package main
 
 import (
-	"fmt"
 	"net/http"
 	_ "net/http/pprof"
 	"time"
@@ -45,30 +44,18 @@ func main() {
 			sampleChan <- testutil.GenerateDataSamples(1e5, 1, 0*time.Second)
 		}
 	}()
-	go func() {
-		for samples := range sampleChan {
-			err := store(samples)
-			if err != nil {
-				log.Fatal(err)
-			}
+		req := testutil.GenerateRemoteRequest(samples)
+		resp, err := testutil.PostWriteRequest(baseURL, req)
+		if err != nil {
+			log.Fatal(err)
 		}
+		if resp.StatusCode != 200 {
+			log.Fatalf("Expected HTTP status 200, got %d", resp.StatusCode)
+		}
+		samplesTotal.Add(float64(len(samples)))
+		writeRequestsTotal.Inc()
 	}()
 
 	http.Handle("/metrics", promhttp.Handler())
 	log.Fatal(http.ListenAndServe(":9000", nil))
-}
-
-func store(samples model.Samples) error {
-	req := testutil.GenerateRemoteRequest(samples)
-	resp, err := testutil.PostWriteRequest(baseURL, req)
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode != 200 {
-		return fmt.Errorf("Expected HTTP status 200, got %d", resp.StatusCode)
-	}
-	samplesTotal.Add(float64(len(samples)))
-	writeRequestsTotal.Inc()
-
-	return nil
 }
