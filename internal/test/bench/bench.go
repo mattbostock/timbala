@@ -15,11 +15,17 @@ import (
 )
 
 const (
-	applicationName = "bench"
-	baseURL         = "http://load_balancer"
+	applicationName   = "bench"
+	baseURL           = "http://load_balancer"
+	samplesToGenerate = 1e5
 )
 
 var (
+	samplesQueued = prometheus.NewGauge(prometheus.GaugeOpts{
+		Namespace: applicationName,
+		Name:      "samples_queued",
+		Help:      "Samples queues to be sent to AthensDB",
+	})
 	samplesTotal = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: applicationName,
 		Name:      "samples_sent_total",
@@ -33,6 +39,7 @@ var (
 )
 
 func init() {
+	prometheus.MustRegister(samplesQueued)
 	prometheus.MustRegister(samplesTotal)
 	prometheus.MustRegister(writeRequestsTotal)
 }
@@ -41,7 +48,8 @@ func main() {
 	sampleChan := make(chan model.Samples, 3)
 	go func() {
 		for {
-			sampleChan <- testutil.GenerateDataSamples(1e5, 1, time.Duration(0))
+			sampleChan <- testutil.GenerateDataSamples(samplesToGenerate, 1, time.Duration(0))
+			samplesQueued.Set(float64(len(sampleChan)) * samplesToGenerate)
 		}
 	}()
 	// FIXME: Make number of nodes in the cluster configurable for
