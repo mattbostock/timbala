@@ -73,15 +73,17 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 		sort.Sort(m)
+		// FIXME: Handle collisions
+		mHash := m.Hash()
 
 		for _, s := range ts.Samples {
 			timestamp := time.Unix(s.Timestamp/1000, (s.Timestamp-s.Timestamp/1000)*1e6)
 			// FIXME: Avoid panic if the cluster is not yet initialised
 			for _, n := range cluster.GetNodes().FilterBySeries([]byte{}, timestamp) {
-				if _, ok := samplesToNodes[*n][m.Hash()]; !ok {
-					samplesToNodes[*n][m.Hash()] = &timeseries{labels: m}
+				if _, ok := samplesToNodes[*n][mHash]; !ok {
+					samplesToNodes[*n][mHash] = &timeseries{labels: m}
 				}
-				samplesToNodes[*n][m.Hash()].samples = append(samplesToNodes[*n][m.Hash()].samples, s)
+				samplesToNodes[*n][mHash].samples = append(samplesToNodes[*n][mHash].samples, s)
 			}
 		}
 		// FIXME: sort samples by time?
