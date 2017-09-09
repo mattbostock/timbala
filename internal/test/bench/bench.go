@@ -39,7 +39,7 @@ func init() {
 }
 
 func main() {
-	sampleChan := make(chan model.Samples)
+	sampleChan := make(chan model.Samples, 4)
 	go func() {
 		for {
 			sampleChan <- testutil.GenerateDataSamples(1e5, 1, 0*time.Second)
