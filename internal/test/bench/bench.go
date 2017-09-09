@@ -41,7 +41,7 @@ func main() {
 	sampleChan := make(chan model.Samples, 4)
 	go func() {
 		for {
-			sampleChan <- testutil.GenerateDataSamples(1e5, 1, 0*time.Second)
+			sampleChan <- testutil.GenerateDataSamples(1e5, 1, time.Duration(0))
 		}
 	}()
 		req := testutil.GenerateRemoteRequest(samples)
