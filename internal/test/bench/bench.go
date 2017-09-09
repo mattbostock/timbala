@@ -38,23 +38,30 @@ func init() {
 }
 
 func main() {
-	sampleChan := make(chan model.Samples, 4)
+	sampleChan := make(chan model.Samples, 3)
 	go func() {
 		for {
 			sampleChan <- testutil.GenerateDataSamples(1e5, 1, time.Duration(0))
 		}
 	}()
-		req := testutil.GenerateRemoteRequest(samples)
-		resp, err := testutil.PostWriteRequest(baseURL, req)
-		if err != nil {
-			log.Fatal(err)
-		}
-		if resp.StatusCode != 200 {
-			log.Fatalf("Expected HTTP status 200, got %d", resp.StatusCode)
-		}
-		samplesTotal.Add(float64(len(samples)))
-		writeRequestsTotal.Inc()
-	}()
+	// FIXME: Make number of nodes in the cluster configurable for
+	// benchmarking large clusters
+	for i := 0; i < 3; i++ {
+		go func() {
+			for samples := range sampleChan {
+				req := testutil.GenerateRemoteRequest(samples)
+				resp, err := testutil.PostWriteRequest(baseURL, req)
+				if err != nil {
+					log.Fatal(err)
+				}
+				if resp.StatusCode != 200 {
+					log.Fatalf("Expected HTTP status 200, got %d", resp.StatusCode)
+				}
+				samplesTotal.Add(float64(len(samples)))
+				writeRequestsTotal.Inc()
+			}
+		}()
+	}
 
 	http.Handle("/metrics", promhttp.Handler())
 	log.Fatal(http.ListenAndServe(":9000", nil))
