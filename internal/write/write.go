@@ -72,7 +72,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 				Value: l.Value,
 			})
 		}
-		sort.Sort(m)
+		sort.Stable(m)
 		// FIXME: Handle collisions
 		mHash := m.Hash()
 
