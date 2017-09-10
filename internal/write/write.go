@@ -84,9 +84,12 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 			for _, n := range cluster.GetNodes().FilterBySeries([]byte{}, timestamp) {
 				if _, ok := samplesToNodes[*n][mHash]; !ok {
 					// FIXME handle change in cluster size
-					samplesToNodes[*n][mHash] = &timeseries{labels: m, samples: make([]*prompb.Sample, 0, len(ts.Samples))}
+					samplesToNodes[*n][mHash] = &prompb.TimeSeries{
+						Labels:  ts.Labels,
+						Samples: make([]*prompb.Sample, 0, len(ts.Samples)),
+					}
 				}
-				samplesToNodes[*n][mHash].samples = append(samplesToNodes[*n][mHash].samples, s)
+				samplesToNodes[*n][mHash].Samples = append(samplesToNodes[*n][mHash].Samples, s)
 			}
 		}
 		// FIXME: sort samples by time?
@@ -121,14 +124,23 @@ func localWrite(series seriesMap) error {
 	mu.Lock()
 	appender, err := store.Appender()
 	if err != nil {
-	        mu.Unlock()
+		mu.Unlock()
 		return err
 	}
 
 	for _, sseries := range series {
-		for _, s := range sseries.samples {
+		m := make(labels.Labels, 0, len(sseries.Labels))
+		for _, l := range sseries.Labels {
+			m = append(m, labels.Label{
+				Name:  l.Name,
+				Value: l.Value,
+			})
+		}
+		sort.Stable(m)
+
+		for _, s := range sseries.Samples {
 			// FIXME: Look at using AddFast
-			appender.Add(sseries.labels, s.Timestamp, s.Value)
+			appender.Add(m, s.Timestamp, s.Value)
 		}
 	}
 	// Intentionally avoid defer on hot path
@@ -161,25 +173,7 @@ func remoteWrite(sampleMap sampleNodeMap) error {
 			req := &prompb.WriteRequest{
 				Timeseries: make([]*prompb.TimeSeries, 0, len(nSamples)),
 			}
-			for _, series := range nSamples {
-				ts := &prompb.TimeSeries{
-					Labels:  make([]*prompb.Label, 0, len(series.labels)),
-					Samples: make([]*prompb.Sample, 0, len(series.samples)),
-				}
-				for _, l := range series.labels {
-					ts.Labels = append(ts.Labels,
-						&prompb.Label{
-							Name:  l.Name,
-							Value: l.Value,
-						})
-				}
-				for _, s := range series.samples {
-					ts.Samples = append(ts.Samples,
-						&prompb.Sample{
-							Value:     float64(s.Value),
-							Timestamp: int64(s.Timestamp),
-						})
-				}
+			for _, ts := range nSamples {
 				req.Timeseries = append(req.Timeseries, ts)
 			}
 
@@ -224,10 +218,4 @@ func remoteWrite(sampleMap sampleNodeMap) error {
 }
 
 type sampleNodeMap map[cluster.Node]seriesMap
-
-type seriesMap map[uint64]*timeseries
-
-type timeseries struct {
-	labels  labels.Labels
-	samples []*prompb.Sample
-}
+type seriesMap map[uint64]*prompb.TimeSeries
