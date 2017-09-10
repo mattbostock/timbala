@@ -3,29 +3,30 @@
 package main
 
 import (
+	"math"
 	"net/http"
 	_ "net/http/pprof"
+	"runtime"
 	"time"
 
 	"github.com/mattbostock/athensdb/internal/test/testutil"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/prometheus/common/model"
 	log "github.com/sirupsen/logrus"
 )
 
 const (
 	applicationName   = "bench"
-	baseURL           = "http://load_balancer"
 	samplesToGenerate = 1e5
 )
 
 var (
-	samplesQueued = prometheus.NewGauge(prometheus.GaugeOpts{
-		Namespace: applicationName,
-		Name:      "samples_queued",
-		Help:      "Samples queues to be sent to AthensDB",
-	})
+	athensDBAddr = []string{
+		"http://athensdb_1:9080",
+		"http://athensdb_2:9080",
+		"http://athensdb_3:9080",
+	}
+
 	samplesTotal = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: applicationName,
 		Name:      "samples_sent_total",
@@ -39,36 +40,34 @@ var (
 )
 
 func init() {
-	prometheus.MustRegister(samplesQueued)
 	prometheus.MustRegister(samplesTotal)
 	prometheus.MustRegister(writeRequestsTotal)
 }
 
 func main() {
-	sampleChan := make(chan model.Samples, 3)
-	go func() {
-		for {
-			sampleChan <- testutil.GenerateDataSamples(samplesToGenerate, 1, time.Duration(0))
-			samplesQueued.Set(float64(len(sampleChan)) * samplesToGenerate)
+	workersPerNode := 4 * int(math.Min(1, float64(runtime.NumCPU()/len(athensDBAddr))))
+
+	for _, url := range athensDBAddr {
+		for i := 0; i < workersPerNode; i++ {
+			go func(url string) {
+				for {
+					samples := testutil.GenerateDataSamples(samplesToGenerate, 1, time.Duration(0))
+					req := testutil.GenerateRemoteRequest(samples)
+					samplesTotal.Add(float64(len(req.Timeseries)))
+
+					time.Sleep(time.Second)
+					resp, err := testutil.PostWriteRequest(url, req)
+					if err != nil {
+						log.Fatal(err)
+					}
+					if resp.StatusCode != 200 {
+						log.Fatalf("Expected HTTP status 200, got %d", resp.StatusCode)
+					}
+					samplesTotal.Add(float64(len(req.Timeseries)))
+					writeRequestsTotal.Inc()
+				}
+			}(url)
 		}
-	}()
-	// FIXME: Make number of nodes in the cluster configurable for
-	// benchmarking large clusters
-	for i := 0; i < 3; i++ {
-		go func() {
-			for samples := range sampleChan {
-				req := testutil.GenerateRemoteRequest(samples)
-				resp, err := testutil.PostWriteRequest(baseURL, req)
-				if err != nil {
-					log.Fatal(err)
-				}
-				if resp.StatusCode != 200 {
-					log.Fatalf("Expected HTTP status 200, got %d", resp.StatusCode)
-				}
-				samplesTotal.Add(float64(len(samples)))
-				writeRequestsTotal.Inc()
-			}
-		}()
 	}
 
 	http.Handle("/metrics", promhttp.Handler())
