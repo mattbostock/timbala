@@ -122,5 +122,9 @@ func PostWriteRequest(baseURL string, req *prompb.WriteRequest) (*http.Response,
 	io.Copy(ioutil.Discard, resp.Body)
 	resp.Body.Close()
 
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("got HTTP %d status code", resp.StatusCode)
+	}
+
 	return resp, nil
 }

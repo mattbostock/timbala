@@ -201,8 +201,14 @@ func remoteWrite(sampleMap sampleNodeMap) error {
 				wgErrChan <- err
 				return
 			}
+
 			io.Copy(ioutil.Discard, httpResp.Body)
 			httpResp.Body.Close()
+
+			if httpResp.StatusCode != http.StatusOK {
+				wgErrChan <- fmt.Errorf("got HTTP %d status code", httpResp.StatusCode)
+				return
+			}
 		}(node, nodeSamples)
 	}
 	// FIXME cancel requests if one fails
