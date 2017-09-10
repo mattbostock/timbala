@@ -94,9 +94,9 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// FIXME handle change in cluster size
-	samplesToNodes := make(sampleNodeMap, len(cluster.GetNodes()))
+	seriesToNodes := make(seriesNodeMap, len(cluster.GetNodes()))
 	for _, n := range cluster.GetNodes() {
-		samplesToNodes[*n] = make(seriesMap, numPreallocTimeseries)
+		seriesToNodes[*n] = make(seriesMap, numPreallocTimeseries)
 	}
 
 	for _, ts := range req.Timeseries {
@@ -115,20 +115,20 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 			timestamp := time.Unix(s.Timestamp/1000, (s.Timestamp-s.Timestamp/1000)*1e6)
 			// FIXME: Avoid panic if the cluster is not yet initialised
 			for _, n := range cluster.GetNodes().FilterBySeries([]byte{}, timestamp) {
-				if _, ok := samplesToNodes[*n][mHash]; !ok {
+				if _, ok := seriesToNodes[*n][mHash]; !ok {
 					// FIXME handle change in cluster size
-					samplesToNodes[*n][mHash] = &prompb.TimeSeries{
+					seriesToNodes[*n][mHash] = &prompb.TimeSeries{
 						Labels:  ts.Labels,
 						Samples: make([]*prompb.Sample, 0, len(ts.Samples)),
 					}
 				}
-				samplesToNodes[*n][mHash].Samples = append(samplesToNodes[*n][mHash].Samples, s)
+				seriesToNodes[*n][mHash].Samples = append(seriesToNodes[*n][mHash].Samples, s)
 			}
 		}
 		// FIXME: sort samples by time?
 	}
 
-	localSeries, ok := samplesToNodes[*cluster.LocalNode()]
+	localSeries, ok := seriesToNodes[*cluster.LocalNode()]
 	if ok {
 		err = localWrite(localSeries)
 		if err != nil {
@@ -138,10 +138,10 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Remove local node so that it's not written to again as a 'remote' node
-		delete(samplesToNodes, *cluster.LocalNode())
+		delete(seriesToNodes, *cluster.LocalNode())
 	}
 
-	err = remoteWrite(samplesToNodes)
+	err = remoteWrite(seriesToNodes)
 	if err != nil {
 		log.Warningln(err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -178,19 +178,19 @@ func localWrite(series seriesMap) error {
 	return nil
 }
 
-func remoteWrite(sampleMap sampleNodeMap) error {
+func remoteWrite(sNodeMap seriesNodeMap) error {
 	var wg sync.WaitGroup
 	var wgErrChan = make(chan error, len(cluster.GetNodes()))
-	for node, nodeSamples := range sampleMap {
-		if len(nodeSamples) == 0 {
+	for node, nodeSeries := range sNodeMap {
+		if len(nodeSeries) == 0 {
 			continue
 		}
 
 		wg.Add(1)
-		go func(n cluster.Node, nSamples seriesMap) {
+		go func(n cluster.Node, nSeries seriesMap) {
 			defer wg.Done()
 
-			log.Debugf("Writing %d samples to %s", len(nSamples), n.Name())
+			log.Debugf("Writing %d series to %s", len(nSeries), n.Name())
 
 			httpAddr, err := n.HTTPAddr()
 			if err != nil {
@@ -200,9 +200,9 @@ func remoteWrite(sampleMap sampleNodeMap) error {
 			apiURL := fmt.Sprintf("%s%s%s", "http://", httpAddr, Route)
 
 			req := &prompb.WriteRequest{
-				Timeseries: make([]*prompb.TimeSeries, 0, len(nSamples)),
+				Timeseries: make([]*prompb.TimeSeries, 0, len(nSeries)),
 			}
-			for _, ts := range nSamples {
+			for _, ts := range nSeries {
 				req.Timeseries = append(req.Timeseries, ts)
 			}
 
@@ -238,7 +238,7 @@ func remoteWrite(sampleMap sampleNodeMap) error {
 				wgErrChan <- fmt.Errorf("got HTTP %d status code", httpResp.StatusCode)
 				return
 			}
-		}(node, nodeSamples)
+		}(node, nodeSeries)
 	}
 	// FIXME cancel requests if one fails
 	wg.Wait()
@@ -252,5 +252,5 @@ func remoteWrite(sampleMap sampleNodeMap) error {
 	return nil
 }
 
-type sampleNodeMap map[cluster.Node]seriesMap
+type seriesNodeMap map[cluster.Node]seriesMap
 type seriesMap map[uint64]*prompb.TimeSeries
