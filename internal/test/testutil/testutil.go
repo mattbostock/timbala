@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"math/rand"
 	"net/http"
 	"time"
@@ -117,6 +119,7 @@ func PostWriteRequest(baseURL string, req *prompb.WriteRequest) (*http.Response,
 	if err != nil {
 		return nil, err
 	}
+	io.Copy(ioutil.Discard, resp.Body)
 	resp.Body.Close()
 
 	return resp, nil
