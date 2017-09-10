@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/golang/protobuf/proto"
 	"github.com/golang/snappy"
 	promAPI "github.com/prometheus/client_golang/api"
 	promAPIv1 "github.com/prometheus/client_golang/api/prometheus/v1"
@@ -107,7 +106,7 @@ func QueryAPI(baseURL, query string, ts time.Time) (model.Value, error) {
 }
 
 func PostWriteRequest(baseURL string, req *prompb.WriteRequest) (*http.Response, error) {
-	data, err := proto.Marshal(req)
+	data, err := req.Marshal()
 	if err != nil {
 		return nil, err
 	}
