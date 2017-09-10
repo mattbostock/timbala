@@ -3,6 +3,7 @@ package write
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -56,6 +57,13 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 
 	var req = prompb.WriteRequest{Timeseries: make([]*prompb.TimeSeries, 0, numPreallocTimeseries)}
 	if err := req.Unmarshal(reqBuf); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if len(req.Timeseries) == 0 {
+		err := errors.New("received empty request containing zero timeseries")
+		log.Warningln(err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
