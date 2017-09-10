@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/golang/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/mattbostock/athensdb/internal/cluster"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -55,7 +54,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req = prompb.WriteRequest{Timeseries: make([]*prompb.TimeSeries, 0, numPreallocTimeseries)}
-	if err := proto.Unmarshal(reqBuf, &req); err != nil {
+	if err := req.Unmarshal(reqBuf); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -183,7 +182,7 @@ func remoteWrite(sampleMap sampleNodeMap) error {
 				req.Timeseries = append(req.Timeseries, ts)
 			}
 
-			data, err := proto.Marshal(req)
+			data, err := req.Marshal()
 			if err != nil {
 				wgErrChan <- err
 				return
