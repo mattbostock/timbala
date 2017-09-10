@@ -136,6 +136,9 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+
+		// Remove local node so that it's not written to again as a 'remote' node
+		delete(samplesToNodes, *cluster.LocalNode())
 	}
 
 	err = remoteWrite(samplesToNodes)
