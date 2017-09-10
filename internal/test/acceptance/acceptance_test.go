@@ -109,8 +109,8 @@ func TestRemoteWrite(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if resp.StatusCode != 200 {
-		t.Fatalf("Expected HTTP status 200, got %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("Expected HTTP status %d, got %d", http.StatusOK, resp.StatusCode)
 	}
 }
 
@@ -133,8 +133,8 @@ func TestRemoteWriteThenQueryBack(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if resp.StatusCode != 200 {
-		t.Fatalf("Expected HTTP status 200, got %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("Expected HTTP status %d, got %d", http.StatusOK, resp.StatusCode)
 	}
 
 	result, err := testutil.QueryAPI(httpBaseURL, name, time.Now())

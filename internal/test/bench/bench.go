@@ -60,8 +60,8 @@ func main() {
 					if err != nil {
 						log.Fatal(err)
 					}
-					if resp.StatusCode != 200 {
-						log.Fatalf("Expected HTTP status 200, got %d", resp.StatusCode)
+					if resp.StatusCode != http.StatusOK {
+						log.Fatalf("Expected HTTP status %d, got %d", http.StatusOK, resp.StatusCode)
 					}
 					samplesTotal.Add(float64(len(req.Timeseries)))
 					writeRequestsTotal.Inc()
