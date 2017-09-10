@@ -55,7 +55,6 @@ func main() {
 					req := testutil.GenerateRemoteRequest(samples)
 					samplesTotal.Add(float64(len(req.Timeseries)))
 
-					time.Sleep(time.Second)
 					resp, err := testutil.PostWriteRequest(url, req)
 					if err != nil {
 						log.Fatal(err)
