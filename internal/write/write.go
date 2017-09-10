@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"sort"
@@ -207,6 +208,7 @@ func remoteWrite(sampleMap sampleNodeMap) error {
 				return
 			}
 			defer httpResp.Body.Close()
+			io.Copy(ioutil.Discard, httpResp.Body)
 		}(node, nodeSamples)
 	}
 	// FIXME cancel requests if one fails
