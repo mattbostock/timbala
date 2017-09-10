@@ -120,7 +120,7 @@ func localWrite(series seriesMap) error {
 	mu.Lock()
 	appender, err := store.Appender()
 	if err != nil {
-	        mu.Unlock()
+		mu.Unlock()
 		return err
 	}
 
