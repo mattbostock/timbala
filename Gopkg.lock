@@ -253,6 +253,12 @@
   revision = "c4ca881685ae1266a75caf57da46d8b6934213c0"
 
 [[projects]]
+  name = "github.com/retailnext/hllpp"
+  packages = ["."]
+  revision = "9fdfea05b3e55bebe7beb22d16c7db15d46cd518"
+  version = "v1.0.0"
+
+[[projects]]
   branch = "master"
   name = "github.com/sean-/seed"
   packages = ["."]
@@ -321,6 +327,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "d33c758011d12eb56c04508faafba2ef5bc5fc930dd7beb12bb8759af7271a94"
+  inputs-digest = "5b12af769ac381010c0c606bdf3e829fa6f002179dd7e51a69404fed6edd8bb5"
   solver-name = "gps-cdcl"
   solver-version = 1
