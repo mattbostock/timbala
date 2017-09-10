@@ -201,8 +201,8 @@ func remoteWrite(sampleMap sampleNodeMap) error {
 				wgErrChan <- err
 				return
 			}
-			defer httpResp.Body.Close()
 			io.Copy(ioutil.Discard, httpResp.Body)
+			httpResp.Body.Close()
 		}(node, nodeSamples)
 	}
 	// FIXME cancel requests if one fails
