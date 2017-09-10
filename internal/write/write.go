@@ -60,6 +60,39 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// This is an internal write, so don't replicate it to other nodes
+	// This case is very common, to make it fast
+	if r.Header.Get(HttpHeaderInternalWrite) != "" {
+		mu.Lock()
+		appender, err := store.Appender()
+		if err != nil {
+			mu.Unlock()
+			log.Warning(err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+
+		for _, ts := range req.Timeseries {
+			m := make(labels.Labels, 0, len(ts.Labels))
+			for _, l := range ts.Labels {
+				m = append(m, labels.Label{
+					Name:  l.Name,
+					Value: l.Value,
+				})
+			}
+			sort.Stable(m)
+
+			for _, s := range ts.Samples {
+				// FIXME: Look at using AddFast
+				appender.Add(m, s.Timestamp, s.Value)
+			}
+		}
+		appender.Commit()
+		mu.Unlock()
+
+		log.Debugf("Wrote %d series received from another node in the cluster", len(req.Timeseries))
+		return
+	}
+
 	// FIXME handle change in cluster size
 	samplesToNodes := make(sampleNodeMap, len(cluster.GetNodes()))
 	for _, n := range cluster.GetNodes() {
@@ -103,13 +136,6 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-	}
-
-	// This is an internal write, so don't replicate it to other nodes
-	if r.Header.Get(HttpHeaderInternalWrite) != "" {
-		// FIXME raise error if this is supposed to be an internal write but there were none?
-		log.Debugf("Received %d series from another node in the cluster", len(localSeries))
-		return
 	}
 
 	err = remoteWrite(samplesToNodes)
