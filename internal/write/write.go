@@ -69,7 +69,20 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	series := make([]*seriesData, 0, numPreallocTimeseries)
+	var wg sync.WaitGroup
+	var series []*prompb.TimeSeries
+	// FIXME handle change in cluster size
+	var wgErrChan = make(chan error, len(cluster.GetNodes()))
+
+	mu.Lock()
+	// FIXME look at using multiple appenders
+	appender, err := store.Appender()
+	if err != nil {
+		mu.Unlock()
+		log.Warning(err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+
 	for _, ts := range req.Timeseries {
 		m := make(labels.Labels, 0, len(ts.Labels))
 		for _, l := range ts.Labels {
@@ -80,72 +93,28 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		}
 		sort.Stable(m)
 
-		series = append(series, &seriesData{
-			labels:         m,
-			proto:          *ts,
-			samplesToNodes: make([][]string, 0, len(ts.Samples)),
-		})
+		for _, s := range ts.Samples {
+			if r.Header.Get(HttpHeaderInternalWrite) != "" {
+				// FIXME: Look at using AddFast
+				appender.Add(m, s.Timestamp, s.Value)
+				// No forwarding necessary, it's a common case
+				// so blindly accept the data received and move
+				// on to the next sample
+				continue
+			}
+
+		}
+
+		series = append(series, ts)
 	}
 
-	// This is an internal write, so don't replicate it to other nodes
-	// This case is very common, to make it fast
 	if r.Header.Get(HttpHeaderInternalWrite) != "" {
-		mu.Lock()
-		appender, err := store.Appender()
-		if err != nil {
-			mu.Unlock()
-			log.Warning(err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
-
-		for _, ts := range series {
-			for _, s := range ts.proto.Samples {
-				// FIXME: Look at using AddFast
-				appender.Add(ts.labels, s.Timestamp, s.Value)
-			}
-		}
 		appender.Commit()
 		mu.Unlock()
-
-		log.Debugf("Wrote %d series received from another node in the cluster", len(series))
 		return
 	}
 
-	mu.Lock()
-	// FIXME look at using multiple appenders
-	appender, err := store.Appender()
-	if err != nil {
-		mu.Unlock()
-		log.Warningln(err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
-	for _, ts := range series {
-		for i, s := range ts.proto.Samples {
-			timestamp := time.Unix(s.Timestamp/1000, (s.Timestamp-s.Timestamp/1000)*1e6)
-			// FIXME: Avoid panic if the cluster is not yet initialised
-			for _, n := range cluster.GetNodes().FilterBySeries([]byte{}, timestamp) {
-				// Required so that the length of ts.samplesToNodes matches number of samples
-				if len(ts.samplesToNodes) == i {
-					ts.samplesToNodes = append(ts.samplesToNodes, make([]string, 0, cluster.ReplicationFactor))
-				}
-
-				if n.Name() == cluster.LocalNode().Name() {
-					// FIXME: Look at using AddFast
-					appender.Add(ts.labels, s.Timestamp, s.Value)
-					continue
-				}
-
-				ts.samplesToNodes[i] = append(ts.samplesToNodes[i], n.Name())
-			}
-		}
-	}
-	var wg sync.WaitGroup
-	// FIXME handle change in cluster size
-	var wgErrChan = make(chan error, len(cluster.GetNodes()))
-
 	for _, node := range cluster.GetNodes() {
-		// FIXME check not a local node, panic if so
-
 		wg.Add(1)
 		go func(n *cluster.Node) {
 			defer wg.Done()
@@ -163,27 +132,42 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 			}
 
 			for _, ts := range series {
-				added := false
-			sampleLoop:
-				for i, sn := range ts.samplesToNodes {
-					// optimise this by freezing the slice of nodes and using the index?
-					for _, sNode := range sn {
-						if sNode == n.Name() {
-							if !added {
-								req.Timeseries = append(req.Timeseries, &prompb.TimeSeries{
-									Labels: ts.proto.Labels,
-									// FIXME preallocate samples?
-								})
-								added = true
-							}
-							j := len(req.Timeseries) - 1
-							req.Timeseries[j].Samples = append(req.Timeseries[j].Samples, ts.proto.Samples[i])
-							break sampleLoop
+				m := make(labels.Labels, 0, len(ts.Labels))
+				for _, l := range ts.Labels {
+					m = append(m, labels.Label{
+						Name:  l.Name,
+						Value: l.Value,
+					})
+				}
+				sort.Stable(m)
+
+				for i, s := range ts.Samples {
+					found := false
+					timestamp := time.Unix(s.Timestamp/1000, (s.Timestamp-s.Timestamp/1000)*1e6)
+					// FIXME: Avoid panic if the cluster is not yet initialised
+					for _, n := range cluster.GetNodes().FilterBySeries([]byte{}, timestamp) {
+						if n.Name() == cluster.LocalNode().Name() {
+							// FIXME AddFast
+							appender.Add(m, s.Timestamp, s.Value)
+							break
+						}
+
+						if n.Name() == node.Name() {
+							found = true
+							break
 						}
 					}
+
+					if !found {
+						// FIXME memory leak? https://github.com/golang/go/wiki/SliceTricks
+						ts.Samples = append(ts.Samples[:i], ts.Samples[i+1:]...)
+					}
+				}
+
+				if len(ts.Samples) > 0 {
+					req.Timeseries = append(req.Timeseries, ts)
 				}
 			}
-
 			//	log.Debugf("Writing %d series to %s", len(nSeries), n.Name())
 
 			data, err := req.Marshal()
@@ -225,16 +209,14 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 
 	select {
 	case err := <-wgErrChan:
-		return err
+		appender.Rollback()
+		mu.Unlock()
+		log.Warningln(err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 	default:
 	}
+
 	// Intentionally avoid defer on hot path
 	appender.Commit()
 	mu.Unlock()
-}
-
-type seriesData struct {
-	proto          prompb.TimeSeries
-	labels         labels.Labels
-	samplesToNodes [][]string
 }
