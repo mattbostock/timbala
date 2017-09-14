@@ -1,4 +1,4 @@
-all: build test
+all: build
 .PHONY: all bench build clean integration savedeps servedocs test testdeps testdocs
 
 MKDOCS_MATERIAL_VERSION = 1.5.4
