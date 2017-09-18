@@ -1,19 +1,28 @@
 # Configuration
 
-AthensDB is configured using [environment variables][] which are documented below.
+AthensDB can be configured using command-line options or using environment
+variables prefixed with `ATHENSDB_`.
 
 AthensDB aims to keep user-supplied configuration a minimum to keep complexity
 to a minimum, both for the AthensDB codebase and for its users.
 
 The 'immutable' configuration which is hard-coded is documented below.
 
-[environment variables]: https://en.wikipedia.org/wiki/Environment_variable
+## Configuration options
 
-## Environment variables
-
-Variable | Description | Default
+Command-line flag | Description | Default
 - | - | -
-`ADDR` | Address and port to expose HTTP server on | `localhost:9080`
+`--data-directory` | The directory where data should be stored for the local node. Will be created if it does not exist. | `./data`
+`--http-advertise-addr` | The host and port to advertise to peer nodes for HTTP communication | `localhost:9080`
+`--http-bind-addr` | The host and port to bind to for HTTP communication | `localhost:9080`
+`--peer-advertise-addr` | The host and port to advertise to peer nodes for gossip communication | `localhost:7946`
+`--peer-bind-addr` | The host and port to bind to for gossip communication | `localhost:7946`
+`--peers` | A list of peers to connect to to form a cluster; one peer per flag | No default
+`--log-level` | Logging verbosity level; one of `debug`, `info`, `warning`, `error` or `fatal` | `info`
+
+The same configuration options can be set as environment variables using the
+`ATHENSDB_` prefix. For example, `ATHENSDB_LOG_LEVEL=debug` is equivalent to
+`--log-level=debug`.
 
 ## Immutable constants
 
