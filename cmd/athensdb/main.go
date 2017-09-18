@@ -110,6 +110,7 @@ func main() {
 		kingpin.Fatalf("could not parse log level %q", *level)
 	}
 	log.SetLevel(lvl)
+	log.SetFormatter(&log.JSONFormatter{})
 
 	// FIXME: Set logger
 	localStorage, err := tsdb.Open("data", nil, prometheus.DefaultRegisterer, &tsdb.Options{
