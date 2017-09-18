@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/pprof"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"time"
@@ -28,6 +29,7 @@ import (
 const (
 	applicationName = "athensdb"
 
+	defaultDataDir  = "./data"
 	defaultHTTPAddr = "localhost:9080"
 	defaultPeerAddr = "localhost:7946"
 
@@ -46,6 +48,7 @@ var (
 	)
 
 	config struct {
+		dataDir           string
 		httpAdvertiseAddr *net.TCPAddr
 		httpBindAddr      *net.TCPAddr
 		peerAdvertiseAddr *net.TCPAddr
@@ -61,6 +64,11 @@ func init() {
 }
 
 func main() {
+	kingpin.Flag(
+		"data-directory",
+		"path to the directory to store data",
+	).Default(defaultDataDir).StringVar(&config.dataDir)
+
 	kingpin.Flag(
 		"http-advertise-addr",
 		"host:port to advertise to other nodes for HTTP",
@@ -113,7 +121,7 @@ func main() {
 	log.SetFormatter(&log.JSONFormatter{})
 
 	// FIXME: Set logger
-	localStorage, err := tsdb.Open("data", nil, prometheus.DefaultRegisterer, &tsdb.Options{
+	localStorage, err := tsdb.Open(config.dataDir, nil, prometheus.DefaultRegisterer, &tsdb.Options{
 		WALFlushInterval:  5 * time.Second,
 		RetentionDuration: math.MaxUint64, // approximately 292,471,208 years
 		BlockRanges:       tsdb.ExponentialBlockRanges(int64(2*time.Hour)/1e6, 3, 5),
@@ -183,7 +191,8 @@ func main() {
 		log.Fatal("Failed to join the cluster: ", err)
 	}
 
-	log.Infof("Starting AthensDB node %s", cluster.LocalNode())
+	absoluteDataDir, _ := filepath.Abs(config.dataDir)
+	log.Infof("Starting AthensDB node %s; data will be stored in %s", cluster.LocalNode(), absoluteDataDir)
 	log.Infof("Binding to %s for peer gossip; %s for HTTP", config.peerBindAddr, config.httpBindAddr)
 	log.Infof("Advertising to cluster as %s for peer gossip; %s for HTTP", config.peerAdvertiseAddr, config.httpAdvertiseAddr)
 	log.Infof("%d nodes in cluster: %s", len(cluster.GetNodes()), cluster.GetNodes())
