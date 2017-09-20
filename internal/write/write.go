@@ -25,8 +25,6 @@ import (
 const (
 	HttpHeaderInternalWrite = "X-AthensDB-Internal-Write-Version"
 	Route                   = "/receive"
-
-	numPreallocTimeseries = 1e5
 )
 
 var (
@@ -56,7 +54,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req = prompb.WriteRequest{Timeseries: make([]*prompb.TimeSeries, 0, numPreallocTimeseries)}
+	var req prompb.WriteRequest
 	if err := req.Unmarshal(reqBuf); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -79,29 +77,36 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Warning(err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
+	var m labels.Labels
 	for _, ts := range req.Timeseries {
-		m := make(labels.Labels, 0, len(ts.Labels))
+		// https://github.com/golang/go/wiki/SliceTricks#filtering-without-allocating
+		metric := m[:0]
 		for _, l := range ts.Labels {
-			m = append(m, labels.Label{
+			metric = append(metric, labels.Label{
 				Name:  l.Name,
 				Value: l.Value,
 			})
 		}
-		sort.Stable(m)
+		sort.Stable(metric)
 
 		if r.Header.Get(HttpHeaderInternalWrite) != "" {
+			mu.Lock()
 			for _, sa := range ts.Samples {
 				// FIXME: Look at using AddFast
-				mu.Lock()
-				appender.Add(m, sa.Timestamp, sa.Value)
-				mu.Unlock()
+				appender.Add(metric, sa.Timestamp, sa.Value)
 			}
-			appender.Commit()
-			return
+			mu.Unlock()
+			continue
 		}
-		series = append(series, &seriesData{proto: ts, labels: m})
+		series = append(series, &seriesData{proto: ts, labels: metric})
+	}
+
+	if r.Header.Get(HttpHeaderInternalWrite) != "" {
+		appender.Commit()
+		return
 	}
 
 	for _, node := range cluster.GetNodes() {
@@ -116,46 +121,35 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 			}
 			apiURL := fmt.Sprintf("%s%s%s", "http://", httpAddr, Route)
 
-			req := &prompb.WriteRequest{
-				// FIXME reduce this?
-				Timeseries: make([]*prompb.TimeSeries, 0, len(series)),
-			}
-
+			var req prompb.WriteRequest
 			for _, s := range series {
-				for i, sa := range s.proto.Samples {
-					found := false
+				var ts = &prompb.TimeSeries{}
+				for _, sa := range s.proto.Samples {
 					timestamp := time.Unix(sa.Timestamp/1000, (sa.Timestamp-sa.Timestamp/1000)*1e6)
 					// FIXME: Avoid panic if the cluster is not yet initialised
 					for _, n2 := range cluster.GetNodes().FilterBySeries([]byte{}, timestamp) {
 						if n2.Name() == cluster.LocalNode().Name() {
-							// FIXME AddFast
 							mu.Lock()
+							// FIXME consider AddFast
 							appender.Add(s.labels, sa.Timestamp, sa.Value)
 							mu.Unlock()
-							break
+							continue
 						}
 
 						if n2.Name() == n.Name() {
-							found = true
-							break
+							ts.Samples = append(ts.Samples, sa)
 						}
-					}
-
-					if !found {
-						var end int
-						if i == len(s.proto.Samples)-1 {
-							end = len(s.proto.Samples) - 1
-						} else {
-							end = i + 1
-						}
-						// FIXME memory leak? https://github.com/golang/go/wiki/SliceTricks
-						s.proto.Samples = append(s.proto.Samples[:i], s.proto.Samples[end:]...)
 					}
 				}
 
-				if len(s.proto.Samples) > 0 {
-					req.Timeseries = append(req.Timeseries, s.proto)
+				if len(ts.Samples) > 0 {
+					ts.Labels = s.proto.Labels
+					req.Timeseries = append(req.Timeseries, ts)
 				}
+			}
+
+			if len(req.Timeseries) == 0 {
+				return
 			}
 
 			log.Debugf("Writing %d series to %s", len(req.Timeseries), n.Name())
