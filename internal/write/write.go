@@ -70,15 +70,13 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var wg sync.WaitGroup
-	var series []*prompb.TimeSeries
+	var series []*seriesData
 	// FIXME handle change in cluster size
 	var wgErrChan = make(chan error, len(cluster.GetNodes()))
 
-	mu.Lock()
 	// FIXME look at using multiple appenders
 	appender, err := store.Appender()
 	if err != nil {
-		mu.Unlock()
 		log.Warning(err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
@@ -93,25 +91,17 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		}
 		sort.Stable(m)
 
-		for _, s := range ts.Samples {
-			if r.Header.Get(HttpHeaderInternalWrite) != "" {
+		if r.Header.Get(HttpHeaderInternalWrite) != "" {
+			for _, sa := range ts.Samples {
 				// FIXME: Look at using AddFast
-				appender.Add(m, s.Timestamp, s.Value)
-				// No forwarding necessary, it's a common case
-				// so blindly accept the data received and move
-				// on to the next sample
-				continue
+				mu.Lock()
+				appender.Add(m, sa.Timestamp, sa.Value)
+				mu.Unlock()
 			}
-
+			appender.Commit()
+			return
 		}
-
-		series = append(series, ts)
-	}
-
-	if r.Header.Get(HttpHeaderInternalWrite) != "" {
-		appender.Commit()
-		mu.Unlock()
-		return
+		series = append(series, &seriesData{proto: ts, labels: m})
 	}
 
 	for _, node := range cluster.GetNodes() {
@@ -131,45 +121,44 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 				Timeseries: make([]*prompb.TimeSeries, 0, len(series)),
 			}
 
-			for _, ts := range series {
-				m := make(labels.Labels, 0, len(ts.Labels))
-				for _, l := range ts.Labels {
-					m = append(m, labels.Label{
-						Name:  l.Name,
-						Value: l.Value,
-					})
-				}
-				sort.Stable(m)
-
-				for i, s := range ts.Samples {
+			for _, s := range series {
+				for i, sa := range s.proto.Samples {
 					found := false
-					timestamp := time.Unix(s.Timestamp/1000, (s.Timestamp-s.Timestamp/1000)*1e6)
+					timestamp := time.Unix(sa.Timestamp/1000, (sa.Timestamp-sa.Timestamp/1000)*1e6)
 					// FIXME: Avoid panic if the cluster is not yet initialised
-					for _, n := range cluster.GetNodes().FilterBySeries([]byte{}, timestamp) {
-						if n.Name() == cluster.LocalNode().Name() {
+					for _, n2 := range cluster.GetNodes().FilterBySeries([]byte{}, timestamp) {
+						if n2.Name() == cluster.LocalNode().Name() {
 							// FIXME AddFast
-							appender.Add(m, s.Timestamp, s.Value)
+							mu.Lock()
+							appender.Add(s.labels, sa.Timestamp, sa.Value)
+							mu.Unlock()
 							break
 						}
 
-						if n.Name() == node.Name() {
+						if n2.Name() == n.Name() {
 							found = true
 							break
 						}
 					}
 
 					if !found {
+						var end int
+						if i == len(s.proto.Samples)-1 {
+							end = len(s.proto.Samples) - 1
+						} else {
+							end = i + 1
+						}
 						// FIXME memory leak? https://github.com/golang/go/wiki/SliceTricks
-						ts.Samples = append(ts.Samples[:i], ts.Samples[i+1:]...)
+						s.proto.Samples = append(s.proto.Samples[:i], s.proto.Samples[end:]...)
 					}
 				}
 
-				if len(ts.Samples) > 0 {
-					req.Timeseries = append(req.Timeseries, ts)
+				if len(s.proto.Samples) > 0 {
+					req.Timeseries = append(req.Timeseries, s.proto)
 				}
 			}
-			//	log.Debugf("Writing %d series to %s", len(nSeries), n.Name())
 
+			log.Debugf("Writing %d series to %s", len(req.Timeseries), n.Name())
 			data, err := req.Marshal()
 			if err != nil {
 				wgErrChan <- err
@@ -209,14 +198,15 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 
 	select {
 	case err := <-wgErrChan:
-		appender.Rollback()
-		mu.Unlock()
 		log.Warningln(err)
+		appender.Rollback()
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	default:
+		appender.Commit()
 	}
+}
 
-	// Intentionally avoid defer on hot path
-	appender.Commit()
-	mu.Unlock()
+type seriesData struct {
+	proto  *prompb.TimeSeries
+	labels labels.Labels
 }

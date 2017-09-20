@@ -228,7 +228,7 @@ func createIdxChkReaders(tc []struct {
 		return labels.Compare(labels.FromMap(tc[i].lset), labels.FromMap(tc[i].lset)) < 0
 	})
 
-	postings := &memPostings{m: make(map[term][]uint32, 512)}
+	postings := newMemPostings()
 	chkReader := mockChunkReader(make(map[uint64]chunks.Chunk))
 	lblIdx := make(map[string]stringset)
 	mi := newMockIndex()
@@ -255,12 +255,11 @@ func createIdxChkReaders(tc []struct {
 		}
 
 		ls := labels.FromMap(s.lset)
-		mi.AddSeries(uint32(i), ls, metas...)
+		mi.AddSeries(uint64(i), ls, metas...)
 
-		postings.add(uint32(i), term{})
+		postings.add(uint64(i), ls)
+
 		for _, l := range ls {
-			postings.add(uint32(i), term{l.Name, l.Value})
-
 			vs, present := lblIdx[l.Name]
 			if !present {
 				vs = stringset{}
@@ -274,8 +273,8 @@ func createIdxChkReaders(tc []struct {
 		mi.WriteLabelIndex([]string{l}, vs.slice())
 	}
 
-	for tm := range postings.m {
-		mi.WritePostings(tm.name, tm.value, postings.get(tm))
+	for l := range postings.m {
+		mi.WritePostings(l.Name, l.Value, postings.get(l.Name, l.Value))
 	}
 
 	return mi, chkReader
@@ -555,10 +554,10 @@ func TestBlockQuerierDelete(t *testing.T) {
 			},
 		},
 		tombstones: newTombstoneReader(
-			map[uint32]intervals{
-				1: intervals{{1, 3}},
-				2: intervals{{1, 3}, {6, 10}},
-				3: intervals{{6, 10}},
+			map[uint64]Intervals{
+				1: Intervals{{1, 3}},
+				2: Intervals{{1, 3}, {6, 10}},
+				3: Intervals{{6, 10}},
 			},
 		),
 
@@ -663,13 +662,13 @@ func TestBaseChunkSeries(t *testing.T) {
 		lset   labels.Labels
 		chunks []ChunkMeta
 
-		ref uint32
+		ref uint64
 	}
 
 	cases := []struct {
 		series []refdSeries
 		// Postings should be in the sorted order of the the series
-		postings []uint32
+		postings []uint64
 
 		expIdxs []int
 	}{
@@ -703,7 +702,7 @@ func TestBaseChunkSeries(t *testing.T) {
 					ref: 108,
 				},
 			},
-			postings: []uint32{12, 10, 108},
+			postings: []uint64{12, 10, 108},
 
 			expIdxs: []int{0, 1, 3},
 		},
@@ -722,7 +721,7 @@ func TestBaseChunkSeries(t *testing.T) {
 					ref:    1,
 				},
 			},
-			postings: []uint32{},
+			postings: []uint64{},
 
 			expIdxs: []int{},
 		},
@@ -1138,6 +1137,17 @@ func TestChunkSeriesIterator_SeekInCurrentChunk(t *testing.T) {
 	require.Equal(t, float64(6), v)
 }
 
+// Regression when calling Next() with a time bounded to fit within two samples.
+// Seek gets called and advances beyond the max time, which was just accepted as a valid sample.
+func TestChunkSeriesIterator_NextWithMinTime(t *testing.T) {
+	metas := []ChunkMeta{
+		chunkFromSamples([]sample{{1, 6}, {5, 6}, {7, 8}}),
+	}
+
+	it := newChunkSeriesIterator(metas, nil, 2, 4)
+	require.False(t, it.Next())
+}
+
 func TestPopulatedCSReturnsValidChunkSlice(t *testing.T) {
 	lbls := []labels.Labels{labels.New(labels.Label{"a", "b"})}
 	chunkMetas := [][]ChunkMeta{
@@ -1205,7 +1215,7 @@ func (m *mockChunkSeriesSet) Next() bool {
 	return m.i < len(m.l)
 }
 
-func (m *mockChunkSeriesSet) At() (labels.Labels, []ChunkMeta, intervals) {
+func (m *mockChunkSeriesSet) At() (labels.Labels, []ChunkMeta, Intervals) {
 	return m.l[m.i], m.cm[m.i], nil
 }
 

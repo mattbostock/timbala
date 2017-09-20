@@ -69,7 +69,7 @@
 
 [[projects]]
   name = "github.com/go-kit/kit"
-  packages = ["log"]
+  packages = ["log","log/level"]
   revision = "a9ca6725cbbea455e61c6bc8a1ed28e81eb3493b"
   version = "v0.5.0"
 
@@ -232,7 +232,7 @@
 [[projects]]
   branch = "master"
   name = "github.com/prometheus/common"
-  packages = ["expfmt","internal/bitbucket.org/ww/goautoneg","log","model","route"]
+  packages = ["expfmt","internal/bitbucket.org/ww/goautoneg","model","route"]
   revision = "bc8b88226a1210b016e9993b1d75f858c9c8f778"
 
 [[projects]]
@@ -244,13 +244,12 @@
 [[projects]]
   name = "github.com/prometheus/prometheus"
   packages = ["config","pkg/labels","pkg/textparse","pkg/timestamp","pkg/value","prompb","promql","storage","storage/tsdb","util/httputil","util/stats","util/strutil","util/testutil"]
-  revision = "a52f082939a566d5269671e98be06fc6bdf61d09"
-  version = "v2.0.0-beta.2"
+  revision = "a04be0bc1c85eb2d6774198c37418020115c60d4"
 
 [[projects]]
   name = "github.com/prometheus/tsdb"
   packages = [".","chunks","labels"]
-  revision = "c4ca881685ae1266a75caf57da46d8b6934213c0"
+  revision = "162a48e4f2c6e486a0ebf61cf9cea73a8023ef0a"
 
 [[projects]]
   name = "github.com/retailnext/hllpp"
@@ -291,7 +290,7 @@
 [[projects]]
   branch = "master"
   name = "golang.org/x/sys"
-  packages = ["unix","windows","windows/registry","windows/svc/eventlog"]
+  packages = ["unix","windows"]
   revision = "7ddbeae9ae08c6a06a59597f0c9edbc5ff2444ce"
 
 [[projects]]
@@ -327,6 +326,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "5b12af769ac381010c0c606bdf3e829fa6f002179dd7e51a69404fed6edd8bb5"
+  inputs-digest = "89dacfee9118e28de1d16a0f3fef94392d4dbf136c23f3d0ae8993d8e71248a5"
   solver-name = "gps-cdcl"
   solver-version = 1

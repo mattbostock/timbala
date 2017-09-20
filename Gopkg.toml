@@ -51,10 +51,10 @@
 
 [[constraint]]
   name = "github.com/prometheus/prometheus"
-  version = "2.0.0-beta.2"
+  revision = "a04be0bc1c85eb2d6774198c37418020115c60d4"
 
 [[constraint]]
-  revision = "c4ca881685ae1266a75caf57da46d8b6934213c0"
+  revision = "162a48e4f2c6e486a0ebf61cf9cea73a8023ef0a"
   name = "github.com/prometheus/tsdb"
 
 [[constraint]]
