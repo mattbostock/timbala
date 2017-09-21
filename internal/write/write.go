@@ -68,7 +68,8 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var wg sync.WaitGroup
-	var series []*seriesData
+	var seriesMap = make(map[string][]*seriesData)
+
 	// FIXME handle change in cluster size
 	var wgErrChan = make(chan error, len(cluster.GetNodes()))
 
@@ -101,7 +102,10 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 			mu.Unlock()
 			continue
 		}
-		series = append(series, &seriesData{proto: ts, labels: metric})
+		for _, node := range cluster.GetNodes() {
+			// FIXME hostname?
+			seriesMap[node.Name()] = append(seriesMap[node.Name()], &seriesData{proto: ts, labels: metric})
+		}
 	}
 
 	if r.Header.Get(HttpHeaderInternalWrite) != "" {
@@ -122,8 +126,8 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 			apiURL := fmt.Sprintf("%s%s%s", "http://", httpAddr, Route)
 
 			var req prompb.WriteRequest
-			for _, s := range series {
-				var ts = &prompb.TimeSeries{}
+			for _, s := range seriesMap[n.Name()] {
+				ts := &prompb.TimeSeries{}
 				for _, sa := range s.proto.Samples {
 					timestamp := time.Unix(sa.Timestamp/1000, (sa.Timestamp-sa.Timestamp/1000)*1e6)
 					// FIXME: Avoid panic if the cluster is not yet initialised
