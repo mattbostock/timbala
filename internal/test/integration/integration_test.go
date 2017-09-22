@@ -39,7 +39,7 @@ func TestPrometheusMetricsCanBeQueried(t *testing.T) {
 			expected := model.SampleValue(1)
 
 			if len(result.(model.Vector)) == 0 {
-				t.Error("Got 0 results")
+				t.Errorf("Got 0 results from %s", addr)
 				return
 			}
 

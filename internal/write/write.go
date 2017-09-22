@@ -12,20 +12,19 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/net/context/ctxhttp"
+
 	"github.com/golang/snappy"
 	"github.com/mattbostock/athensdb/internal/cluster"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/sirupsen/logrus"
-	"golang.org/x/net/context/ctxhttp"
 )
 
 const (
 	HttpHeaderInternalWrite = "X-AthensDB-Internal-Write-Version"
 	Route                   = "/receive"
-
-	numPreallocTimeseries = 1e5
 )
 
 var (
@@ -55,7 +54,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req = prompb.WriteRequest{Timeseries: make([]*prompb.TimeSeries, 0, numPreallocTimeseries)}
+	var req prompb.WriteRequest
 	if err := req.Unmarshal(reqBuf); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -68,137 +67,56 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// This is an internal write, so don't replicate it to other nodes
-	// This case is very common, to make it fast
-	if r.Header.Get(HttpHeaderInternalWrite) != "" {
-		mu.Lock()
-		appender, err := store.Appender()
-		if err != nil {
-			mu.Unlock()
-			log.Warning(err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
-
-		for _, ts := range req.Timeseries {
-			m := make(labels.Labels, 0, len(ts.Labels))
-			for _, l := range ts.Labels {
-				m = append(m, labels.Label{
-					Name:  l.Name,
-					Value: l.Value,
-				})
-			}
-			sort.Stable(m)
-
-			for _, s := range ts.Samples {
-				// FIXME: Look at using AddFast
-				appender.Add(m, s.Timestamp, s.Value)
-			}
-		}
-		appender.Commit()
-		mu.Unlock()
-
-		log.Debugf("Wrote %d series received from another node in the cluster", len(req.Timeseries))
-		return
-	}
+	var wg sync.WaitGroup
+	var seriesMap = make(map[string][]*seriesData)
 
 	// FIXME handle change in cluster size
-	seriesToNodes := make(seriesNodeMap, len(cluster.GetNodes()))
-	for _, n := range cluster.GetNodes() {
-		seriesToNodes[*n] = make(seriesMap, numPreallocTimeseries)
-	}
+	var wgErrChan = make(chan error, len(cluster.GetNodes()))
 
-	for _, ts := range req.Timeseries {
-		m := make(labels.Labels, 0, len(ts.Labels))
-		for _, l := range ts.Labels {
-			m = append(m, labels.Label{
-				Name:  l.Name,
-				Value: l.Value,
-			})
-		}
-		sort.Stable(m)
-		// FIXME: Handle collisions
-		mHash := m.Hash()
-
-		for _, s := range ts.Samples {
-			timestamp := time.Unix(s.Timestamp/1000, (s.Timestamp-s.Timestamp/1000)*1e6)
-			// FIXME: Avoid panic if the cluster is not yet initialised
-			for _, n := range cluster.GetNodes().FilterBySeries([]byte{}, timestamp) {
-				if _, ok := seriesToNodes[*n][mHash]; !ok {
-					// FIXME handle change in cluster size
-					seriesToNodes[*n][mHash] = &prompb.TimeSeries{
-						Labels:  ts.Labels,
-						Samples: make([]*prompb.Sample, 0, len(ts.Samples)),
-					}
-				}
-				seriesToNodes[*n][mHash].Samples = append(seriesToNodes[*n][mHash].Samples, s)
-			}
-		}
-		// FIXME: sort samples by time?
-	}
-
-	localSeries, ok := seriesToNodes[*cluster.LocalNode()]
-	if ok {
-		err = localWrite(localSeries)
-		if err != nil {
-			log.Warningln(err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		// Remove local node so that it's not written to again as a 'remote' node
-		delete(seriesToNodes, *cluster.LocalNode())
-	}
-
-	err = remoteWrite(seriesToNodes)
+	// FIXME look at using multiple appenders
+	appender, err := store.Appender()
 	if err != nil {
-		log.Warningln(err)
+		log.Warning(err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-}
 
-func localWrite(series seriesMap) error {
-	mu.Lock()
-	appender, err := store.Appender()
-	if err != nil {
-		mu.Unlock()
-		return err
-	}
-
-	for _, sseries := range series {
-		m := make(labels.Labels, 0, len(sseries.Labels))
-		for _, l := range sseries.Labels {
-			m = append(m, labels.Label{
+	var m labels.Labels
+	for _, ts := range req.Timeseries {
+		// https://github.com/golang/go/wiki/SliceTricks#filtering-without-allocating
+		metric := m[:0]
+		for _, l := range ts.Labels {
+			metric = append(metric, labels.Label{
 				Name:  l.Name,
 				Value: l.Value,
 			})
 		}
-		sort.Stable(m)
+		sort.Stable(metric)
 
-		for _, s := range sseries.Samples {
-			// FIXME: Look at using AddFast
-			appender.Add(m, s.Timestamp, s.Value)
-		}
-	}
-	// Intentionally avoid defer on hot path
-	appender.Commit()
-	mu.Unlock()
-	return nil
-}
-
-func remoteWrite(sNodeMap seriesNodeMap) error {
-	var wg sync.WaitGroup
-	var wgErrChan = make(chan error, len(cluster.GetNodes()))
-	for node, nodeSeries := range sNodeMap {
-		if len(nodeSeries) == 0 {
+		if r.Header.Get(HttpHeaderInternalWrite) != "" {
+			mu.Lock()
+			for _, sa := range ts.Samples {
+				// FIXME: Look at using AddFast
+				appender.Add(metric, sa.Timestamp, sa.Value)
+			}
+			mu.Unlock()
 			continue
 		}
+		for _, node := range cluster.GetNodes() {
+			// FIXME hostname?
+			seriesMap[node.Name()] = append(seriesMap[node.Name()], &seriesData{proto: ts, labels: metric})
+		}
+	}
 
+	if r.Header.Get(HttpHeaderInternalWrite) != "" {
+		appender.Commit()
+		return
+	}
+
+	for _, node := range cluster.GetNodes() {
 		wg.Add(1)
-		go func(n cluster.Node, nSeries seriesMap) {
+		go func(n *cluster.Node) {
 			defer wg.Done()
-
-			log.Debugf("Writing %d series to %s", len(nSeries), n.Name())
 
 			httpAddr, err := n.HTTPAddr()
 			if err != nil {
@@ -207,13 +125,38 @@ func remoteWrite(sNodeMap seriesNodeMap) error {
 			}
 			apiURL := fmt.Sprintf("%s%s%s", "http://", httpAddr, Route)
 
-			req := &prompb.WriteRequest{
-				Timeseries: make([]*prompb.TimeSeries, 0, len(nSeries)),
-			}
-			for _, ts := range nSeries {
-				req.Timeseries = append(req.Timeseries, ts)
+			var req prompb.WriteRequest
+			for _, s := range seriesMap[n.Name()] {
+				ts := &prompb.TimeSeries{}
+				for _, sa := range s.proto.Samples {
+					timestamp := time.Unix(sa.Timestamp/1000, (sa.Timestamp-sa.Timestamp/1000)*1e6)
+					// FIXME: Avoid panic if the cluster is not yet initialised
+					for _, n2 := range cluster.GetNodes().FilterBySeries([]byte{}, timestamp) {
+						if n2.Name() == cluster.LocalNode().Name() {
+							mu.Lock()
+							// FIXME consider AddFast
+							appender.Add(s.labels, sa.Timestamp, sa.Value)
+							mu.Unlock()
+							continue
+						}
+
+						if n2.Name() == n.Name() {
+							ts.Samples = append(ts.Samples, sa)
+						}
+					}
+				}
+
+				if len(ts.Samples) > 0 {
+					ts.Labels = s.proto.Labels
+					req.Timeseries = append(req.Timeseries, ts)
+				}
 			}
 
+			if len(req.Timeseries) == 0 {
+				return
+			}
+
+			log.Debugf("Writing %d series to %s", len(req.Timeseries), n.Name())
 			data, err := req.Marshal()
 			if err != nil {
 				wgErrChan <- err
@@ -243,22 +186,25 @@ func remoteWrite(sNodeMap seriesNodeMap) error {
 			httpResp.Body.Close()
 
 			if httpResp.StatusCode != http.StatusOK {
-				wgErrChan <- fmt.Errorf("got HTTP %d status code", httpResp.StatusCode)
+				wgErrChan <- fmt.Errorf("got HTTP %d status code from %s", httpResp.StatusCode, n.Name())
 				return
 			}
-		}(node, nodeSeries)
+		}(node)
 	}
 	// FIXME cancel requests if one fails
 	wg.Wait()
 
 	select {
 	case err := <-wgErrChan:
-		return err
+		log.Warningln(err)
+		appender.Rollback()
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 	default:
+		appender.Commit()
 	}
-
-	return nil
 }
 
-type seriesNodeMap map[cluster.Node]seriesMap
-type seriesMap map[uint64]*prompb.TimeSeries
+type seriesData struct {
+	proto  *prompb.TimeSeries
+	labels labels.Labels
+}

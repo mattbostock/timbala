@@ -18,7 +18,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"hash"
-	"hash/crc32"
 	"io"
 	"os"
 	"path/filepath"
@@ -100,7 +99,7 @@ type IndexWriter interface {
 	// their labels.
 	// The reference numbers are used to resolve entries in postings lists that
 	// are added later.
-	AddSeries(ref uint32, l labels.Labels, chunks ...ChunkMeta) error
+	AddSeries(ref uint64, l labels.Labels, chunks ...ChunkMeta) error
 
 	// WriteLabelIndex serializes an index from label names to values.
 	// The passed in values chained tuples of strings of the length of names.
@@ -131,7 +130,7 @@ type indexWriter struct {
 	uint32s []uint32
 
 	symbols       map[string]uint32 // symbol offsets
-	seriesOffsets map[uint32]uint64 // offsets of series
+	seriesOffsets map[uint64]uint64 // offsets of series
 	labelIndexes  []hashEntry       // label index offsets
 	postings      []hashEntry       // postings lists offsets
 
@@ -176,8 +175,8 @@ func newIndexWriter(dir string) (*indexWriter, error) {
 
 		// Caches.
 		symbols:       make(map[string]uint32, 1<<13),
-		seriesOffsets: make(map[uint32]uint64, 1<<16),
-		crc32:         crc32.New(crc32.MakeTable(crc32.Castagnoli)),
+		seriesOffsets: make(map[uint64]uint64, 1<<16),
+		crc32:         newCRC32(),
 	}
 	if err := iw.writeMeta(); err != nil {
 		return nil, err
@@ -261,7 +260,7 @@ func (w *indexWriter) writeMeta() error {
 	return w.write(w.buf1.get())
 }
 
-func (w *indexWriter) AddSeries(ref uint32, lset labels.Labels, chunks ...ChunkMeta) error {
+func (w *indexWriter) AddSeries(ref uint64, lset labels.Labels, chunks ...ChunkMeta) error {
 	if err := w.ensureStage(idxStageSeries); err != nil {
 		return err
 	}
@@ -293,10 +292,22 @@ func (w *indexWriter) AddSeries(ref uint32, lset labels.Labels, chunks ...ChunkM
 
 	w.buf2.putUvarint(len(chunks))
 
-	for _, c := range chunks {
+	if len(chunks) > 0 {
+		c := chunks[0]
 		w.buf2.putVarint64(c.MinTime)
-		w.buf2.putVarint64(c.MaxTime)
+		w.buf2.putUvarint64(uint64(c.MaxTime - c.MinTime))
 		w.buf2.putUvarint64(c.Ref)
+		t0 := c.MaxTime
+		ref0 := int64(c.Ref)
+
+		for _, c := range chunks[1:] {
+			w.buf2.putUvarint64(uint64(c.MinTime - t0))
+			w.buf2.putUvarint64(uint64(c.MaxTime - c.MinTime))
+			t0 = c.MaxTime
+
+			w.buf2.putVarint64(int64(c.Ref) - ref0)
+			ref0 = int64(c.Ref)
+		}
 	}
 
 	w.buf1.reset()
@@ -336,10 +347,6 @@ func (w *indexWriter) AddSymbols(sym map[string]struct{}) error {
 
 	for _, s := range symbols {
 		w.symbols[s] = uint32(w.pos) + headerSize + uint32(w.buf2.len())
-
-		// NOTE: len(s) gives the number of runes, not the number of bytes.
-		// Therefore the read-back length for strings with unicode characters will
-		// be off when not using putUvarintStr.
 		w.buf2.putUvarintStr(s)
 	}
 
@@ -458,7 +465,10 @@ func (w *indexWriter) WritePostings(name, value string, it Postings) error {
 		if !ok {
 			return errors.Errorf("%p series for reference %d not found", w, it.At())
 		}
-		refs = append(refs, uint32(offset)) // XXX(fabxc): get uint64 vs uint32 sorted out.
+		if offset > (1<<32)-1 {
+			return errors.Errorf("series offset %d exceeds 4 bytes", offset)
+		}
+		refs = append(refs, uint32(offset))
 	}
 	if err := it.Err(); err != nil {
 		return err
@@ -525,7 +535,7 @@ type IndexReader interface {
 
 	// Series populates the given labels and chunk metas for the series identified
 	// by the reference.
-	Series(ref uint32, lset *labels.Labels, chks *[]ChunkMeta) error
+	Series(ref uint64, lset *labels.Labels, chks *[]ChunkMeta) error
 
 	// LabelIndices returns the label pairs for which indices exist.
 	LabelIndices() ([][]string, error)
@@ -559,6 +569,9 @@ var (
 	errInvalidSize = fmt.Errorf("invalid size")
 	errInvalidFlag = fmt.Errorf("invalid flag")
 )
+
+// NewIndexReader returns a new IndexReader on the given directory.
+func NewIndexReader(dir string) (IndexReader, error) { return newIndexReader(dir) }
 
 // newIndexReader returns a new indexReader on the given directory.
 func newIndexReader(dir string) (*indexReader, error) {
@@ -634,7 +647,7 @@ func (r *indexReader) readOffsetTable(off uint64) (map[string]uint32, error) {
 		keys := make([]string, 0, keyCount)
 
 		for i := 0; i < keyCount; i++ {
-			keys = append(keys, d2.uvarintStr())
+			keys = append(keys, d2.uvarintTempStr())
 		}
 		res[strings.Join(keys, sep)] = uint32(d2.uvarint())
 
@@ -671,7 +684,7 @@ func (r *indexReader) section(o uint32) (byte, []byte, error) {
 func (r *indexReader) lookupSymbol(o uint32) (string, error) {
 	d := r.decbufAt(int(o))
 
-	s := d.uvarintStr()
+	s := d.uvarintTempStr()
 	if d.err() != nil {
 		return "", errors.Wrapf(d.err(), "read symbol at %d", o)
 	}
@@ -686,7 +699,7 @@ func (r *indexReader) Symbols() (map[string]struct{}, error) {
 	sym := make(map[string]struct{}, count)
 
 	for ; count > 0; count-- {
-		s := d2.uvarintStr()
+		s := d2.uvarintTempStr()
 		sym[s] = struct{}{}
 	}
 
@@ -741,7 +754,7 @@ func (r *indexReader) LabelIndices() ([][]string, error) {
 	return res, nil
 }
 
-func (r *indexReader) Series(ref uint32, lbls *labels.Labels, chks *[]ChunkMeta) error {
+func (r *indexReader) Series(ref uint64, lbls *labels.Labels, chks *[]ChunkMeta) error {
 	d1 := r.decbufAt(int(ref))
 	d2 := d1.decbuf(int(d1.uvarint()))
 
@@ -773,17 +786,34 @@ func (r *indexReader) Series(ref uint32, lbls *labels.Labels, chks *[]ChunkMeta)
 	// Read the chunks meta data.
 	k = int(d2.uvarint())
 
-	for i := 0; i < k; i++ {
-		mint := d2.varint64()
-		maxt := d2.varint64()
-		off := d2.uvarint64()
+	if k == 0 {
+		return nil
+	}
+
+	t0 := d2.varint64()
+	maxt := int64(d2.uvarint64()) + t0
+	ref0 := int64(d2.uvarint64())
+
+	*chks = append(*chks, ChunkMeta{
+		Ref:     uint64(ref0),
+		MinTime: t0,
+		MaxTime: maxt,
+	})
+	t0 = maxt
+
+	for i := 1; i < k; i++ {
+		mint := int64(d2.uvarint64()) + t0
+		maxt := int64(d2.uvarint64()) + mint
+
+		ref0 += d2.varint64()
+		t0 = maxt
 
 		if d2.err() != nil {
 			return errors.Wrapf(d2.err(), "read meta for chunk %d", i)
 		}
 
 		*chks = append(*chks, ChunkMeta{
-			Ref:     off,
+			Ref:     uint64(ref0),
 			MinTime: mint,
 			MaxTime: maxt,
 		})

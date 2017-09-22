@@ -1,6 +1,7 @@
 package cluster
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -16,7 +17,8 @@ import (
 
 const (
 	hashringVnodes       = 160
-	primaryKeyDateFormat = "20060102"
+
+	ReplicationFactor = 3
 )
 
 var (
@@ -25,10 +27,9 @@ var (
 		ml   *memberlist.Memberlist
 		ring *consistenthash.Map
 		// Replication factor should never change except in tests.
-		// It's not a constant because it is changed during the tests.
 		replicationFactor int
 	}{
-		replicationFactor: 3,
+		replicationFactor: ReplicationFactor,
 	}
 	log *logrus.Logger
 )
@@ -151,9 +152,10 @@ func (nodes Nodes) FilterBySeries(salt []byte, timestamp time.Time) Nodes {
 
 func partitionKey(salt []byte, end time.Time) string {
 	// FIXME filter quantile and le when hashing for data locality?
-	buf := make([]byte, 0, len(salt)+len(primaryKeyDateFormat))
+	ts := formatTime(end)
+	buf := make([]byte, 0, len(salt)+len(ts))
 	buf = append(buf, salt...)
-	buf = append(buf, end.Format(primaryKeyDateFormat)...)
+	buf = append(buf, ts...)
 	return string(buf)
 }
 
@@ -197,4 +199,11 @@ func (e *eventDelegate) NotifyLeave(n *memberlist.Node) {
 
 func (e *eventDelegate) NotifyUpdate(n *memberlist.Node) {
 	log.Infof("Node updated: %s on %s", n.Name, n.Address())
+}
+
+func formatTime(ts time.Time) []byte {
+	// Truncate timestamp to a representation of the nearest day
+	ret := make([]byte, 2)
+	binary.LittleEndian.PutUint16(ret, uint16(ts.Unix()/(60*60*24)))
+	return ret
 }
