@@ -64,3 +64,5 @@ services:
       - athensdb_1
       - athensdb_2
       - athensdb_3
+    ports:
+      - '9000:9000'

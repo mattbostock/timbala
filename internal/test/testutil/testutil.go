@@ -33,7 +33,8 @@ func GenerateDataSamples(numSamples int, seed int64, timeStep time.Duration) mod
 
 	var buf bytes.Buffer
 	for i := 0; i < numSamples; i++ {
-		numLabels := r.Intn(maxNumLabels-1) + 1
+		random := r.Int()
+		numLabels := (random % maxNumLabels) + 1
 		metric := make(model.Metric, numLabels)
 		s := &model.Sample{
 			Metric:    metric,
@@ -45,15 +46,15 @@ func GenerateDataSamples(numSamples int, seed int64, timeStep time.Duration) mod
 		buf.Reset()
 		for j := 0; j < numLabels; j++ {
 			if j > 0 {
-				for k := 0; k < r.Intn(maxLabelNameLength-minLabelNameLength)+minLabelNameLength; k++ {
-					buf.WriteRune(rune(int('a') + r.Intn(lettersInAlphabet)))
+				for k := 0; k < ((random*j)%maxLabelNameLength)+minLabelNameLength; k++ {
+					buf.WriteRune(rune(int('a') + random%lettersInAlphabet + j))
 				}
 				labelName = model.LabelName(buf.String())
 			}
 
 			buf.Reset()
-			for l := 0; l < r.Intn(maxLabelValueLength-1)+1; l++ {
-				buf.WriteRune(rune(int('a') + r.Intn(lettersInAlphabet)))
+			for l := 0; l < (random%maxLabelValueLength)+1; l++ {
+				buf.WriteRune(rune(int('a') + random%lettersInAlphabet + (j * l)))
 			}
 			s.Metric[labelName] = model.LabelValue(buf.String())
 		}
