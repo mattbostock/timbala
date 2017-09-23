@@ -174,28 +174,29 @@ func main() {
 	var api = v1API.NewAPI(queryEngine, promtsdb.Adapter(localStorage))
 	api.Register(router.WithPrefix(apiRoute))
 
-	write.SetLogger(log.StandardLogger())
-	write.SetStore(promtsdb.Adapter(localStorage))
-	router.Post(write.Route, write.Handler)
-
-	router.Get(metricsRoute, promhttp.Handler().ServeHTTP)
-
-	cluster.SetLogger(log.StandardLogger())
-	if err := cluster.Join(&cluster.Config{
-		HTTPAdvertiseAddr: *config.httpAdvertiseAddr,
-		HTTPBindAddr:      *config.httpBindAddr,
-		PeerAdvertiseAddr: *config.peerAdvertiseAddr,
-		PeerBindAddr:      *config.peerBindAddr,
-		Peers:             config.peers,
-	}); err != nil {
+	clstr, err := cluster.New(
+		&cluster.Config{
+			HTTPAdvertiseAddr: *config.httpAdvertiseAddr,
+			HTTPBindAddr:      *config.httpBindAddr,
+			PeerAdvertiseAddr: *config.peerAdvertiseAddr,
+			PeerBindAddr:      *config.peerBindAddr,
+			Peers:             config.peers,
+		},
+		log.StandardLogger(),
+	)
+	if err != nil {
 		log.Fatal("Failed to join the cluster: ", err)
 	}
 
+	writer := write.New(clstr, log.StandardLogger(), promtsdb.Adapter(localStorage))
+	router.Post(write.Route, writer.Handler)
+	router.Get(metricsRoute, promhttp.Handler().ServeHTTP)
+
 	absoluteDataDir, _ := filepath.Abs(config.dataDir)
-	log.Infof("Starting AthensDB node %s; data will be stored in %s", cluster.LocalNode(), absoluteDataDir)
+	log.Infof("Starting AthensDB node %s; data will be stored in %s", clstr.LocalNode(), absoluteDataDir)
 	log.Infof("Binding to %s for peer gossip; %s for HTTP", config.peerBindAddr, config.httpBindAddr)
 	log.Infof("Advertising to cluster as %s for peer gossip; %s for HTTP", config.peerAdvertiseAddr, config.httpAdvertiseAddr)
-	log.Infof("%d nodes in cluster: %s", len(cluster.GetNodes()), cluster.GetNodes())
+	log.Infof("%d nodes in cluster: %s", len(clstr.Nodes()), clstr.Nodes())
 	log.Fatal(http.ListenAndServe(config.httpBindAddr.String(), router))
 }
 

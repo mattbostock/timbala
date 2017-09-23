@@ -9,65 +9,112 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/golang/groupcache/consistenthash"
 	"github.com/hashicorp/memberlist"
+	"github.com/mattbostock/athensdb/internal/hashring"
 	"github.com/sirupsen/logrus"
 )
 
 const (
 	hashringVnodes       = 160
 	primaryKeyDateFormat = "20060102"
+
+	DefaultReplFactor = 3
 )
 
-var (
-	c = struct {
-		c    *Config
-		ml   *memberlist.Memberlist
-		ring *consistenthash.Map
-		// Replication factor should never change except in tests.
-		// It's not a constant because it is changed during the tests.
-		replicationFactor int
-	}{
-		replicationFactor: 3,
+func New(conf *Config, l *logrus.Logger) (*cluster, error) {
+	if conf.ReplicationFactor == 0 {
+		conf.ReplicationFactor = DefaultReplFactor
 	}
-	log *logrus.Logger
-)
 
-func SetLogger(l *logrus.Logger) {
-	log = l
-}
+	cluster := &cluster{
+		log:        l,
+		replFactor: conf.ReplicationFactor,
+		ring:       hashring.New(conf.ReplicationFactor, hashringVnodes),
+	}
 
-type Config struct {
-	HTTPAdvertiseAddr net.TCPAddr
-	HTTPBindAddr      net.TCPAddr
-	PeerAdvertiseAddr net.TCPAddr
-	PeerBindAddr      net.TCPAddr
-	Peers             []string
-}
-
-func Join(config *Config) error {
 	// FIXME(mbostock): Consider using a non-local config for memberlist
 	memberConf := memberlist.DefaultLocalConfig()
-
-	memberConf.AdvertiseAddr = config.PeerAdvertiseAddr.IP.String()
-	memberConf.AdvertisePort = config.PeerAdvertiseAddr.Port
-	memberConf.BindAddr = config.PeerBindAddr.IP.String()
-	memberConf.BindPort = config.PeerBindAddr.Port
-
-	memberConf.Delegate = &delegate{}
-	memberConf.Events = &eventDelegate{}
-	memberConf.LogOutput = ioutil.Discard
-	c.c = config
-	// FIXME: Make dynamic with cluster size else distribution will degrade
-	// as nodes are added
-	c.ring = consistenthash.New(c.replicationFactor*hashringVnodes, nil)
-
-	var err error
-	if c.ml, err = memberlist.Create(memberConf); err != nil {
-		return fmt.Errorf("failed to configure cluster settings: %s", err)
+	memberConf.AdvertiseAddr = conf.PeerAdvertiseAddr.IP.String()
+	memberConf.AdvertisePort = conf.PeerAdvertiseAddr.Port
+	memberConf.BindAddr = conf.PeerBindAddr.IP.String()
+	memberConf.BindPort = conf.PeerBindAddr.Port
+	memberConf.Delegate = &delegate{
+		localHTTPAdvertiseAddr: conf.HTTPAdvertiseAddr.String(),
 	}
-	c.ml.Join(config.Peers)
-	return nil
+	memberConf.Events = &eventDelegate{
+		cluster: cluster,
+		log:     l,
+	}
+	memberConf.LogOutput = ioutil.Discard
+
+	ml, err := memberlist.Create(memberConf)
+	if err != nil {
+		return nil, fmt.Errorf("failed to configure cluster settings: %s", err)
+	}
+	ml.Join(conf.Peers)
+
+	cluster.ml = &membership{ml}
+	return cluster, nil
+}
+
+func (c *cluster) LocalNode() *Node {
+	return c.ml.LocalNode()
+}
+
+func (c *cluster) Nodes() Nodes {
+	return c.ml.Nodes()
+}
+
+func (c *cluster) NodesByPartitionKey(pKey string) Nodes {
+	nodes := c.Nodes()
+	nodesUsed := make(map[*Node]bool, len(nodes))
+	retNodes := make(Nodes, 0, len(nodes))
+
+	// Sort nodes to ensure function is deterministic
+	sort.Stable(nodes)
+
+	for i := 0; i < c.ReplicationFactor(); i++ {
+		if len(nodesUsed) == c.ReplicationFactor() || len(nodesUsed) == len(nodes) {
+			break
+		}
+
+		nodeName := c.HashRing().Get(strconv.Itoa(i) + pKey)
+		useNextNode := false
+	nodeLoop:
+		for j := 0; ; j++ {
+			if j == 2 {
+				panic("iterated through all nodes twice and still couldn't find a match")
+			}
+			for _, n := range nodes {
+				if n.Name() == nodeName || useNextNode {
+					if _, ok := nodesUsed[n]; ok {
+						useNextNode = true
+						continue
+					}
+					retNodes = append(retNodes, n)
+					nodesUsed[n] = true
+					break nodeLoop
+				}
+			}
+		}
+	}
+	return retNodes
+}
+
+func PartitionKey(salt []byte, end time.Time) string {
+	// FIXME filter quantile and le when hashing for data locality?
+	buf := make([]byte, 0, len(salt)+len(primaryKeyDateFormat))
+	buf = append(buf, salt...)
+	buf = append(buf, end.Format(primaryKeyDateFormat)...)
+	return string(buf)
+}
+
+func (c *cluster) ReplicationFactor() int {
+	return c.replFactor
+}
+
+func (c *cluster) HashRing() hashring.HashRing {
+	return c.ring
 }
 
 type Node struct {
@@ -96,81 +143,20 @@ func (n *Node) String() string {
 	return n.Name()
 }
 
-func LocalNode() *Node {
-	if c.ml == nil {
-		panic("Not yet joined a cluster")
-	}
-	return &Node{c.ml.LocalNode()}
-}
-
-func GetNodes() Nodes {
-	if c.ml == nil {
-		panic("Not yet joined a cluster")
-	}
-	nodes := make(Nodes, 0, len(c.ml.Members()))
-	for _, n := range c.ml.Members() {
-		nodes = append(nodes, &Node{n})
-	}
-	return nodes
-}
-
 type Nodes []*Node
 
 func (nodes Nodes) Len() int           { return len(nodes) }
 func (nodes Nodes) Less(i, j int) bool { return nodes[i].Name() < nodes[j].Name() }
 func (nodes Nodes) Swap(i, j int)      { nodes[i], nodes[j] = nodes[j], nodes[i] }
 
-func (nodes Nodes) FilterBySeries(salt []byte, timestamp time.Time) Nodes {
-	// FIXME cache hashmap of names to nodes?
-	retNodes := make(Nodes, 0, len(nodes))
-	nodesUsed := make(map[*Node]bool, len(nodes))
-	pKey := partitionKey(salt, timestamp)
-
-	// Sort nodes to ensure function is deterministic
-	sort.Stable(nodes)
-
-	for i := 0; i < c.replicationFactor; i++ {
-		if len(nodesUsed) == c.replicationFactor || len(nodesUsed) == len(nodes) {
-			break
-		}
-
-		nodeName := c.ring.Get(strconv.Itoa(i) + pKey)
-		useNextNode := false
-	nodeLoop:
-		for j := 0; ; j++ {
-			if j == 2 {
-				panic("iterated through all nodes twice and no match found")
-			}
-			for _, n := range nodes {
-				if n.Name() == nodeName || useNextNode {
-					if _, ok := nodesUsed[n]; ok {
-						useNextNode = true
-						continue
-					}
-					retNodes = append(retNodes, n)
-					nodesUsed[n] = true
-					break nodeLoop
-				}
-			}
-		}
-	}
-	return retNodes
+type delegate struct {
+	localHTTPAdvertiseAddr string
 }
-
-func partitionKey(salt []byte, end time.Time) string {
-	// FIXME filter quantile and le when hashing for data locality?
-	buf := make([]byte, 0, len(salt)+len(primaryKeyDateFormat))
-	buf = append(buf, salt...)
-	buf = append(buf, end.Format(primaryKeyDateFormat)...)
-	return string(buf)
-}
-
-type delegate struct{}
 
 func (d *delegate) NodeMeta(limit int) []byte {
 	// FIXME respect limit
 	j, _ := json.Marshal(&nodeMeta{
-		HTTPAddr: c.c.HTTPAdvertiseAddr.String(),
+		HTTPAddr: d.localHTTPAdvertiseAddr,
 	})
 	return j
 }
@@ -191,18 +177,45 @@ type nodeMeta struct {
 	HTTPAddr string `json:"http_addr"`
 }
 
-type eventDelegate struct{}
+type eventDelegate struct {
+	cluster *cluster
+	log     *logrus.Logger
+}
 
 func (e *eventDelegate) NotifyJoin(n *memberlist.Node) {
-	log.Infof("Node joined: %s on %s", n.Name, n.Address())
-	c.ring.Add(n.Name)
+	e.log.Infof("Node joined: %s on %s", n.Name, n.Address())
+	e.cluster.HashRing().Add(n.Name)
 }
 
 func (e *eventDelegate) NotifyLeave(n *memberlist.Node) {
-	log.Infof("Node left cluster: %s on %s", n.Name, n.Address())
+	e.log.Infof("Node left cluster: %s on %s", n.Name, n.Address())
 	// FIXME remove node from ring
 }
 
 func (e *eventDelegate) NotifyUpdate(n *memberlist.Node) {
-	log.Infof("Node updated: %s on %s", n.Name, n.Address())
+	e.log.Infof("Node updated: %s on %s", n.Name, n.Address())
+}
+
+type cluster struct {
+	log        *logrus.Logger
+	ml         Membership
+	replFactor int
+	ring       hashring.HashRing
+}
+
+type Config struct {
+	HTTPAdvertiseAddr net.TCPAddr
+	HTTPBindAddr      net.TCPAddr
+	PeerAdvertiseAddr net.TCPAddr
+	PeerBindAddr      net.TCPAddr
+	Peers             []string
+	ReplicationFactor int
+}
+
+type Cluster interface {
+	HashRing() hashring.HashRing
+	LocalNode() *Node
+	Nodes() Nodes
+	NodesByPartitionKey(string) Nodes
+	ReplicationFactor() int
 }
