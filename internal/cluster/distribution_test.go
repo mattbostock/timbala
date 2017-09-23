@@ -11,11 +11,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang/groupcache/consistenthash"
 	"github.com/hashicorp/memberlist"
+	"github.com/mattbostock/athensdb/internal/hashring"
 	"github.com/mattbostock/athensdb/internal/test/testutil"
 	"github.com/montanaflynn/stats"
 	"github.com/prometheus/common/model"
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -24,8 +25,8 @@ const (
 
 var (
 	samples                model.Samples
-	testClusterSizes       = [...]int{1, c.replicationFactor, 19}
-	testReplicationFactors = [...]int{1, c.replicationFactor, 19}
+	testClusterSizes       = [...]int{1, DefaultReplFactor, 19}
+	testReplicationFactors = [...]int{1, DefaultReplFactor, 19}
 )
 
 func TestMain(m *testing.M) {
@@ -34,72 +35,67 @@ func TestMain(m *testing.M) {
 }
 
 func BenchmarkHashringDistribution(b *testing.B) {
-	var mockNodes Nodes
-	c.ring = consistenthash.New(c.replicationFactor*hashringVnodes, nil)
-
-	// Add mock nodes to ring
-	for i := 0; i < 19; i++ {
-		c.ring.Add(strconv.Itoa(i))
-		mockNodes = append(mockNodes, &Node{mln: &memberlist.Node{Name: strconv.Itoa(i)}})
+	ml := newMockMemberlist(DefaultReplFactor, 19)
+	clstr := &cluster{
+		ml:         ml,
+		log:        logrus.StandardLogger(),
+		replFactor: DefaultReplFactor,
+		ring:       hashring.New(DefaultReplFactor, hashringVnodes),
+	}
+	for _, n := range clstr.Nodes() {
+		clstr.HashRing().Add(n.Name())
 	}
 
 	now := time.Now()
-
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		mockNodes.FilterBySeries([]byte{}, now.Add(time.Duration(i)))
+		clstr.NodesByPartitionKey(now.Add(time.Duration(i)).String())
 	}
 }
 
 func TestHashringDistribution(t *testing.T) {
 	for _, numTestNodes := range testClusterSizes {
 		for _, replFactor := range testReplicationFactors {
-			c.replicationFactor = replFactor
+			ml := newMockMemberlist(replFactor, numTestNodes)
+			clstr := &cluster{
+				ml:         ml,
+				log:        logrus.StandardLogger(),
+				replFactor: replFactor,
+				ring:       hashring.New(replFactor, hashringVnodes),
+			}
+			for _, n := range clstr.Nodes() {
+				clstr.HashRing().Add(n.Name())
+			}
+
 			t.Run(fmt.Sprintf("%d replicas across %d nodes", replFactor, numTestNodes),
 				func(t *testing.T) {
-					testSampleDistribution(t, numTestNodes, samples)
+					testSampleDistribution(t, clstr, samples)
 				})
 		}
 	}
 }
 
-func testSampleDistribution(t *testing.T, numTestNodes int, samples model.Samples) {
-	var (
-		buckets   []model.Samples
-		mockNodes Nodes
-	)
-
-	c.ring = consistenthash.New(c.replicationFactor*hashringVnodes, nil)
-
-	// Add mock nodes to ring
-	for i := 0; i < numTestNodes; i++ {
-		c.ring.Add(strconv.Itoa(i))
-		buckets = append(buckets, make(model.Samples, 0, numSamples))
-		mockNodes = append(mockNodes, &Node{mln: &memberlist.Node{Name: strconv.Itoa(i)}})
-	}
+func testSampleDistribution(t *testing.T, clstr Cluster, samples model.Samples) {
+	var buckets = make(map[string]model.Samples, len(clstr.Nodes()))
 
 	var replicationSpread stats.Float64Data
 	for _, s := range samples {
-		spread := make(map[int]bool)
-		for _, n := range mockNodes.FilterBySeries([]byte{}, s.Timestamp.Time()) {
-			i, err := strconv.Atoi(n.Name())
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			buckets[i] = append(buckets[i], s)
-			spread[i] = true
+		spread := make(map[string]bool)
+		pKey := PartitionKey([]byte{}, s.Timestamp.Time())
+		for _, n := range clstr.NodesByPartitionKey(pKey) {
+			buckets[n.Name()] = append(buckets[n.Name()], s)
+			spread[n.Name()] = true
 		}
 		replicationSpread = append(replicationSpread, float64(len(spread)))
 	}
 
-	fmt.Printf("Distribution of samples when replication factor is %d across a cluster of %d nodes:\n\n", c.replicationFactor, numTestNodes)
+	fmt.Printf("Distribution of samples when replication factor is %d across a cluster of %d nodes:\n\n", clstr.ReplicationFactor(), len(clstr.Nodes()))
 	var sampleData stats.Float64Data
 
-	for i := 0; i < len(buckets); i++ {
-		percent := float64(len(buckets[i])) / float64(len(samples)*c.replicationFactor) * 100
-		fmt.Printf("Node %-2d: %-100s %5.2f%%; %d samples\n", i, strings.Repeat("#", int(percent)), percent, len(buckets[i]))
-		sampleData = append(sampleData, float64(len(buckets[i])))
+	for k := range buckets {
+		percent := float64(len(buckets[k])) / float64(len(samples)*clstr.ReplicationFactor()) * 100
+		fmt.Printf("Node %-2s: %-100s %5.2f%%; %d samples\n", k, strings.Repeat("#", int(percent)), percent, len(buckets[k]))
+		sampleData = append(sampleData, float64(len(buckets[k])))
 	}
 
 	min, err := sampleData.Min()
@@ -151,7 +147,7 @@ func testSampleDistribution(t *testing.T, numTestNodes int, samples model.Sample
 		t.Fatal(err)
 	}
 
-	fmt.Printf("Distribution of %d replicas across %d nodes:\n\n", c.replicationFactor, numTestNodes)
+	fmt.Printf("Distribution of %d replicas across %d nodes:\n\n", clstr.ReplicationFactor(), len(clstr.Nodes()))
 	for i := 0; i <= int(replMax); i++ {
 		samplesInBucket := 0
 		for _, j := range replicationSpread {
@@ -178,17 +174,40 @@ func testSampleDistribution(t *testing.T, numTestNodes int, samples model.Sample
 		t.Fatalf("Not all samples accounted for in replication spread summary; expected %d, got %d", len(replicationSpread), len(samples))
 	}
 
-	if replMean != float64(c.replicationFactor) && replMean < float64(numTestNodes) {
-		t.Fatalf("Samples are not replicated across exactly %d nodes", c.replicationFactor)
+	if replMean != float64(clstr.ReplicationFactor()) && replMean < float64(len(clstr.Nodes())) {
+		t.Fatalf("Samples are not replicated across exactly %d nodes", clstr.ReplicationFactor())
 	}
 
 	if min == 0 {
 		t.Fatal("Some nodes received zero samples")
 	}
-	if expected := float64(numSamples) * math.Min(float64(c.replicationFactor), float64(numTestNodes)); sum != expected {
+	if expected := float64(numSamples) * math.Min(float64(clstr.ReplicationFactor()), float64(len(clstr.Nodes()))); sum != expected {
 		t.Fatalf("Not all samples accounted for, found %.0f but expected %.0f", sum, expected)
 	}
 	if stddev > float64(numSamples/10) {
-		t.Fatalf("Samples not well distributed, standard deviation is %.2f for %d samples over %d nodes", stddev, numSamples*c.replicationFactor, numTestNodes)
+		t.Fatalf("Samples not well distributed, standard deviation is %.2f for %d samples over %d nodes", stddev, numSamples*clstr.ReplicationFactor(), len(clstr.Nodes()))
 	}
+}
+
+type mockMemberlist struct {
+	nodes Nodes
+}
+
+func (m *mockMemberlist) Nodes() Nodes {
+	return m.nodes
+
+}
+
+func (m *mockMemberlist) LocalNode() *Node {
+	// There's no special significant for the first node, any node will do
+	return m.nodes[0]
+}
+
+func newMockMemberlist(replFactor, numNodes int) *mockMemberlist {
+	nodes := make(Nodes, 0, numNodes)
+	for i := 0; i < numNodes; i++ {
+		nodes = append(nodes, &Node{&memberlist.Node{Name: strconv.Itoa(i)}})
+	}
+
+	return &mockMemberlist{nodes}
 }

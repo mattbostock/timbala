@@ -28,23 +28,29 @@ const (
 	numPreallocTimeseries = 1e5
 )
 
-var (
+type Writer interface {
+	Handler(http.ResponseWriter, *http.Request)
+}
+
+type writer struct {
+	clstr cluster.Cluster
 	store storage.Storage
 	log   *logrus.Logger
 	mu    sync.Mutex
-)
-
-func SetLogger(l *logrus.Logger) {
-	log = l
-}
-func SetStore(s storage.Storage) {
-	store = s
 }
 
-func Handler(w http.ResponseWriter, r *http.Request) {
+func New(c cluster.Cluster, l *logrus.Logger, s storage.Storage) *writer {
+	return &writer{
+		clstr: c,
+		log:   l,
+		store: s,
+	}
+}
+
+func (wr *writer) Handler(w http.ResponseWriter, r *http.Request) {
 	compressed, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		log.Warningln(err)
+		wr.log.Warningln(err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -63,7 +69,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 
 	if len(req.Timeseries) == 0 {
 		err := errors.New("received empty request containing zero timeseries")
-		log.Warningln(err)
+		wr.log.Warningln(err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -71,11 +77,11 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	// This is an internal write, so don't replicate it to other nodes
 	// This case is very common, to make it fast
 	if r.Header.Get(HttpHeaderInternalWrite) != "" {
-		mu.Lock()
-		appender, err := store.Appender()
+		wr.mu.Lock()
+		appender, err := wr.store.Appender()
 		if err != nil {
-			mu.Unlock()
-			log.Warning(err)
+			wr.mu.Unlock()
+			wr.log.Warning(err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 
@@ -95,15 +101,15 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		appender.Commit()
-		mu.Unlock()
+		wr.mu.Unlock()
 
-		log.Debugf("Wrote %d series received from another node in the cluster", len(req.Timeseries))
+		wr.log.Debugf("Wrote %d series received from another node in the cluster", len(req.Timeseries))
 		return
 	}
 
 	// FIXME handle change in cluster size
-	seriesToNodes := make(seriesNodeMap, len(cluster.GetNodes()))
-	for _, n := range cluster.GetNodes() {
+	seriesToNodes := make(seriesNodeMap, len(wr.clstr.Nodes()))
+	for _, n := range wr.clstr.Nodes() {
 		seriesToNodes[*n] = make(seriesMap, numPreallocTimeseries)
 	}
 
@@ -122,7 +128,8 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		for _, s := range ts.Samples {
 			timestamp := time.Unix(s.Timestamp/1000, (s.Timestamp-s.Timestamp/1000)*1e6)
 			// FIXME: Avoid panic if the cluster is not yet initialised
-			for _, n := range cluster.GetNodes().FilterBySeries([]byte{}, timestamp) {
+			pKey := cluster.PartitionKey([]byte{}, timestamp)
+			for _, n := range wr.clstr.NodesByPartitionKey(pKey) {
 				if _, ok := seriesToNodes[*n][mHash]; !ok {
 					// FIXME handle change in cluster size
 					seriesToNodes[*n][mHash] = &prompb.TimeSeries{
@@ -136,32 +143,32 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		// FIXME: sort samples by time?
 	}
 
-	localSeries, ok := seriesToNodes[*cluster.LocalNode()]
+	localSeries, ok := seriesToNodes[*wr.clstr.LocalNode()]
 	if ok {
-		err = localWrite(localSeries)
+		err = wr.localWrite(localSeries)
 		if err != nil {
-			log.Warningln(err)
+			wr.log.Warningln(err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
 		// Remove local node so that it's not written to again as a 'remote' node
-		delete(seriesToNodes, *cluster.LocalNode())
+		delete(seriesToNodes, *wr.clstr.LocalNode())
 	}
 
-	err = remoteWrite(seriesToNodes)
+	err = wr.remoteWrite(seriesToNodes)
 	if err != nil {
-		log.Warningln(err)
+		wr.log.Warningln(err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 }
 
-func localWrite(series seriesMap) error {
-	mu.Lock()
-	appender, err := store.Appender()
+func (wr *writer) localWrite(series seriesMap) error {
+	wr.mu.Lock()
+	appender, err := wr.store.Appender()
 	if err != nil {
-		mu.Unlock()
+		wr.mu.Unlock()
 		return err
 	}
 
@@ -182,13 +189,13 @@ func localWrite(series seriesMap) error {
 	}
 	// Intentionally avoid defer on hot path
 	appender.Commit()
-	mu.Unlock()
+	wr.mu.Unlock()
 	return nil
 }
 
-func remoteWrite(sNodeMap seriesNodeMap) error {
+func (wr *writer) remoteWrite(sNodeMap seriesNodeMap) error {
 	var wg sync.WaitGroup
-	var wgErrChan = make(chan error, len(cluster.GetNodes()))
+	var wgErrChan = make(chan error, len(wr.clstr.Nodes()))
 	for node, nodeSeries := range sNodeMap {
 		if len(nodeSeries) == 0 {
 			continue
@@ -198,7 +205,7 @@ func remoteWrite(sNodeMap seriesNodeMap) error {
 		go func(n cluster.Node, nSeries seriesMap) {
 			defer wg.Done()
 
-			log.Debugf("Writing %d series to %s", len(nSeries), n.Name())
+			wr.log.Debugf("Writing %d series to %s", len(nSeries), n.Name())
 
 			httpAddr, err := n.HTTPAddr()
 			if err != nil {
