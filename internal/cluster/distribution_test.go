@@ -33,6 +33,24 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
+func BenchmarkHashringDistribution(b *testing.B) {
+	var mockNodes Nodes
+	c.ring = consistenthash.New(c.replicationFactor*hashringVnodes, nil)
+
+	// Add mock nodes to ring
+	for i := 0; i < 19; i++ {
+		c.ring.Add(strconv.Itoa(i))
+		mockNodes = append(mockNodes, &Node{mln: &memberlist.Node{Name: strconv.Itoa(i)}})
+	}
+
+	now := time.Now()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		mockNodes.FilterBySeries([]byte{}, now.Add(time.Duration(i)))
+	}
+}
+
 func TestHashringDistribution(t *testing.T) {
 	for _, numTestNodes := range testClusterSizes {
 		for _, replFactor := range testReplicationFactors {
