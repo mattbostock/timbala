@@ -124,15 +124,23 @@ func (nodes Nodes) FilterBySeries(salt []byte, timestamp time.Time) Nodes {
 	// FIXME cache hashmap of names to nodes?
 	retNodes := make(Nodes, 0, len(nodes))
 	nodesUsed := make(map[*Node]bool, len(nodes))
-	useNextNode := false
 	pKey := partitionKey(salt, timestamp)
 
 	// Sort nodes to ensure function is deterministic
 	sort.Stable(nodes)
 
 	for i := 0; i < c.replicationFactor; i++ {
+		if len(nodesUsed) == c.replicationFactor || len(nodesUsed) == len(nodes) {
+			break
+		}
+
 		nodeName := c.ring.Get(strconv.Itoa(i) + pKey)
-		for len(nodesUsed) < c.replicationFactor && len(nodesUsed) < len(nodes) {
+		useNextNode := false
+	nodeLoop:
+		for j := 0; ; j++ {
+			if j == 2 {
+				panic("iterated through all nodes twice and no match found")
+			}
 			for _, n := range nodes {
 				if n.Name() == nodeName || useNextNode {
 					if _, ok := nodesUsed[n]; ok {
@@ -141,7 +149,7 @@ func (nodes Nodes) FilterBySeries(salt []byte, timestamp time.Time) Nodes {
 					}
 					retNodes = append(retNodes, n)
 					nodesUsed[n] = true
-					useNextNode = false
+					break nodeLoop
 				}
 			}
 		}
