@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -48,6 +49,39 @@ func BenchmarkHashringDistribution(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		mockNodes.FilterBySeries([]byte{}, now.Add(time.Duration(i)))
+	}
+}
+
+func TestReplicationIsEquidistant(t *testing.T) {
+	numTestNodes := 19
+	var mockNodes Nodes
+	c.ring = consistenthash.New(c.replicationFactor*hashringVnodes, nil)
+
+	// Add mock nodes to ring
+	for i := 0; i < numTestNodes; i++ {
+		c.ring.Add(strconv.Itoa(i))
+		mockNodes = append(mockNodes, &Node{mln: &memberlist.Node{Name: strconv.Itoa(i)}})
+	}
+
+	nodes := mockNodes.FilterBySeries([]byte{}, time.Now().Add(time.Hour*36))
+	sort.Stable(nodes)
+
+	var replicationInterval stats.Float64Data
+	for _, n := range nodes {
+		i, err := strconv.Atoi(n.Name())
+		if err != nil {
+			t.Error("cannot convert node name to integer:", err)
+		}
+		replicationInterval = append(replicationInterval, float64(i))
+	}
+
+	stddev, err := replicationInterval.StandardDeviation()
+	if err != nil {
+		t.Error(err)
+	}
+
+	if stddev < float64(numTestNodes-c.replicationFactor)/float64(c.replicationFactor) {
+		t.Errorf("Replicas are not allocated at equidistant intervals in the hash ring; standard deviation was %.1f; nodes allocated were: %v", stddev, nodes)
 	}
 }
 
