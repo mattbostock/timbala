@@ -40,16 +40,13 @@ func BenchmarkHashringDistribution(b *testing.B) {
 		ml:         ml,
 		log:        logrus.StandardLogger(),
 		replFactor: DefaultReplFactor,
-		ring:       hashring.New(DefaultReplFactor, hashringVnodes),
-	}
-	for _, n := range clstr.Nodes() {
-		clstr.HashRing().Add(n.Name())
+		ring:       hashring.New(),
 	}
 
 	now := time.Now()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		clstr.NodesByPartitionKey(now.Add(time.Duration(i)).String())
+		clstr.NodesByPartitionKey(uint64(now.Add(time.Duration(i)).Unix()))
 	}
 }
 
@@ -61,10 +58,7 @@ func TestHashringDistribution(t *testing.T) {
 				ml:         ml,
 				log:        logrus.StandardLogger(),
 				replFactor: replFactor,
-				ring:       hashring.New(replFactor, hashringVnodes),
-			}
-			for _, n := range clstr.Nodes() {
-				clstr.HashRing().Add(n.Name())
+				ring:       hashring.New(),
 			}
 
 			t.Run(fmt.Sprintf("%d replicas across %d nodes", replFactor, numTestNodes),

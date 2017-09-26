@@ -62,6 +62,12 @@
   revision = "2ad8d707cc05b1815ce6ff2543bb5e8d8f9298ef"
 
 [[projects]]
+  branch = "master"
+  name = "github.com/dgryski/go-jump"
+  packages = ["."]
+  revision = "e1f439676b570800a863c37b78d1f868f51a85fc"
+
+[[projects]]
   name = "github.com/go-ini/ini"
   packages = ["."]
   revision = "20b96f641a5ea98f2f8619ff4f3e061cff4833bd"
@@ -90,12 +96,6 @@
   packages = ["proto","sortkeys","types"]
   revision = "100ba4e885062801d56799d78530b73b178a78f3"
   version = "v0.4"
-
-[[projects]]
-  branch = "master"
-  name = "github.com/golang/groupcache"
-  packages = ["consistenthash"]
-  revision = "b710c8433bd175204919eb38776e944233235d03"
 
 [[projects]]
   branch = "master"
@@ -327,6 +327,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "5b12af769ac381010c0c606bdf3e829fa6f002179dd7e51a69404fed6edd8bb5"
+  inputs-digest = "14142d2d0041a01bad096d7b8e3c35668878ca8a5d29026a01b25026c376ec10"
   solver-name = "gps-cdcl"
   solver-version = 1
