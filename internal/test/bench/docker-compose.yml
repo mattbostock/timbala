@@ -28,6 +28,8 @@ services:
       - '--peers=athensdb_3'
     ports:
       - '9081:9080'
+    environment:
+      GODEBUG: gctrace=1
     tmpfs: /data
     depends_on:
       - athensdb_1

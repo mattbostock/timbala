@@ -12,14 +12,13 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/net/context/ctxhttp"
-
 	"github.com/golang/snappy"
 	"github.com/mattbostock/athensdb/internal/cluster"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/net/context/ctxhttp"
 )
 
 const (

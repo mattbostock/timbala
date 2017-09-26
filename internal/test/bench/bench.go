@@ -45,7 +45,7 @@ func init() {
 }
 
 func main() {
-	workersPerNode := 4 * int(math.Min(1, float64(runtime.NumCPU()/len(athensDBAddr))))
+	workersPerNode := 8 * int(math.Min(1, float64(runtime.NumCPU()/len(athensDBAddr))))
 
 	for i, url := range athensDBAddr {
 		for j := 0; j < workersPerNode; j++ {
