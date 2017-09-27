@@ -8,8 +8,8 @@ services:
       - '--log-level=debug'
       - '--http-advertise-addr=athensdb_1:9080'
       - '--http-bind-addr=:9080'
-      - '--peer-advertise-addr=athensdb_1:7946'
-      - '--peer-bind-addr=:7946'
+      - '--gossip-advertise-addr=athensdb_1:7946'
+      - '--gossip-bind-addr=:7946'
       - '--peers=athensdb_2'
       - '--peers=athensdb_3'
     ports:
@@ -22,8 +22,8 @@ services:
       - '--log-level=debug'
       - '--http-advertise-addr=athensdb_2:9080'
       - '--http-bind-addr=:9080'
-      - '--peer-advertise-addr=athensdb_2:7946'
-      - '--peer-bind-addr=:7946'
+      - '--gossip-advertise-addr=athensdb_2:7946'
+      - '--gossip-bind-addr=:7946'
       - '--peers=athensdb_1'
       - '--peers=athensdb_3'
     ports:
@@ -38,8 +38,8 @@ services:
       - '--log-level=debug'
       - '--http-advertise-addr=athensdb_3:9080'
       - '--http-bind-addr=:9080'
-      - '--peer-advertise-addr=athensdb_3:7946'
-      - '--peer-bind-addr=:7946'
+      - '--gossip-advertise-addr=athensdb_3:7946'
+      - '--gossip-bind-addr=:7946'
       - '--peers=athensdb_1'
       - '--peers=athensdb_2'
     tmpfs: /data

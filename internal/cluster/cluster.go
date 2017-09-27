@@ -34,10 +34,10 @@ func New(conf *Config, l *logrus.Logger) (*cluster, error) {
 
 	// FIXME(mbostock): Consider using a non-local config for memberlist
 	memberConf := memberlist.DefaultLocalConfig()
-	memberConf.AdvertiseAddr = conf.PeerAdvertiseAddr.IP.String()
-	memberConf.AdvertisePort = conf.PeerAdvertiseAddr.Port
-	memberConf.BindAddr = conf.PeerBindAddr.IP.String()
-	memberConf.BindPort = conf.PeerBindAddr.Port
+	memberConf.AdvertiseAddr = conf.GossipAdvertiseAddr.IP.String()
+	memberConf.AdvertisePort = conf.GossipAdvertiseAddr.Port
+	memberConf.BindAddr = conf.GossipBindAddr.IP.String()
+	memberConf.BindPort = conf.GossipBindAddr.Port
 	memberConf.Delegate = &delegate{
 		localHTTPAdvertiseAddr: conf.HTTPAdvertiseAddr.String(),
 	}
@@ -204,12 +204,12 @@ type cluster struct {
 }
 
 type Config struct {
-	HTTPAdvertiseAddr net.TCPAddr
-	HTTPBindAddr      net.TCPAddr
-	PeerAdvertiseAddr net.TCPAddr
-	PeerBindAddr      net.TCPAddr
-	Peers             []string
-	ReplicationFactor int
+	HTTPAdvertiseAddr   net.TCPAddr
+	HTTPBindAddr        net.TCPAddr
+	GossipAdvertiseAddr net.TCPAddr
+	GossipBindAddr      net.TCPAddr
+	Peers               []string
+	ReplicationFactor   int
 }
 
 type Cluster interface {

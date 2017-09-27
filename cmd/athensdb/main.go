@@ -48,12 +48,12 @@ var (
 	)
 
 	config struct {
-		dataDir           string
-		httpAdvertiseAddr *net.TCPAddr
-		httpBindAddr      *net.TCPAddr
-		peerAdvertiseAddr *net.TCPAddr
-		peerBindAddr      *net.TCPAddr
-		peers             []string
+		dataDir             string
+		httpAdvertiseAddr   *net.TCPAddr
+		httpBindAddr        *net.TCPAddr
+		gossipAdvertiseAddr *net.TCPAddr
+		gossipBindAddr      *net.TCPAddr
+		peers               []string
 	}
 	version = "undefined"
 )
@@ -80,14 +80,14 @@ func main() {
 	).Default(defaultHTTPAddr).TCPVar(&config.httpBindAddr)
 
 	kingpin.Flag(
-		"peer-advertise-addr",
+		"gossip-advertise-addr",
 		"host:port to advertise to other nodes for cluster communication",
-	).Default(defaultPeerAddr).TCPVar(&config.peerAdvertiseAddr)
+	).Default(defaultPeerAddr).TCPVar(&config.gossipAdvertiseAddr)
 
 	kingpin.Flag(
-		"peer-bind-addr",
+		"gossip-bind-addr",
 		"host:port to bind to for cluster communication",
-	).Default(defaultPeerAddr).TCPVar(&config.peerBindAddr)
+	).Default(defaultPeerAddr).TCPVar(&config.gossipBindAddr)
 
 	kingpin.Flag(
 		"peers",
@@ -109,8 +109,8 @@ func main() {
 	if config.httpAdvertiseAddr.IP == nil || config.httpAdvertiseAddr.IP.IsUnspecified() {
 		logFlagFatal("must specify host or IP for --http-advertise-addr")
 	}
-	if config.peerAdvertiseAddr.IP == nil || config.peerAdvertiseAddr.IP.IsUnspecified() {
-		logFlagFatal("must specify host or IP for --peer-advertise-addr")
+	if config.gossipAdvertiseAddr.IP == nil || config.gossipAdvertiseAddr.IP.IsUnspecified() {
+		logFlagFatal("must specify host or IP for --gossip-advertise-addr")
 	}
 
 	lvl, err := log.ParseLevel(*level)
@@ -176,11 +176,11 @@ func main() {
 
 	clstr, err := cluster.New(
 		&cluster.Config{
-			HTTPAdvertiseAddr: *config.httpAdvertiseAddr,
-			HTTPBindAddr:      *config.httpBindAddr,
-			PeerAdvertiseAddr: *config.peerAdvertiseAddr,
-			PeerBindAddr:      *config.peerBindAddr,
-			Peers:             config.peers,
+			HTTPAdvertiseAddr:   *config.httpAdvertiseAddr,
+			HTTPBindAddr:        *config.httpBindAddr,
+			GossipAdvertiseAddr: *config.gossipAdvertiseAddr,
+			GossipBindAddr:      *config.gossipBindAddr,
+			Peers:               config.peers,
 		},
 		log.StandardLogger(),
 	)
@@ -194,8 +194,8 @@ func main() {
 
 	absoluteDataDir, _ := filepath.Abs(config.dataDir)
 	log.Infof("Starting AthensDB node %s; data will be stored in %s", clstr.LocalNode(), absoluteDataDir)
-	log.Infof("Binding to %s for peer gossip; %s for HTTP", config.peerBindAddr, config.httpBindAddr)
-	log.Infof("Advertising to cluster as %s for peer gossip; %s for HTTP", config.peerAdvertiseAddr, config.httpAdvertiseAddr)
+	log.Infof("Binding to %s for peer gossip; %s for HTTP", config.gossipBindAddr, config.httpBindAddr)
+	log.Infof("Advertising to cluster as %s for peer gossip; %s for HTTP", config.gossipAdvertiseAddr, config.httpAdvertiseAddr)
 	log.Infof("%d nodes in cluster: %s", len(clstr.Nodes()), clstr.Nodes())
 	log.Fatal(http.ListenAndServe(config.httpBindAddr.String(), router))
 }
