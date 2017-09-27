@@ -6,16 +6,15 @@ import (
 	"io/ioutil"
 	"net"
 	"sort"
-	"strconv"
 	"time"
 
+	"github.com/cespare/xxhash"
 	"github.com/hashicorp/memberlist"
 	"github.com/mattbostock/athensdb/internal/hashring"
 	"github.com/sirupsen/logrus"
 )
 
 const (
-	hashringVnodes       = 160
 	primaryKeyDateFormat = "20060102"
 
 	DefaultReplFactor = 3
@@ -29,7 +28,7 @@ func New(conf *Config, l *logrus.Logger) (*cluster, error) {
 	cluster := &cluster{
 		log:        l,
 		replFactor: conf.ReplicationFactor,
-		ring:       hashring.New(conf.ReplicationFactor, hashringVnodes),
+		ring:       hashring.New(),
 	}
 
 	// FIXME(mbostock): Consider using a non-local config for memberlist
@@ -65,7 +64,7 @@ func (c *cluster) Nodes() Nodes {
 	return c.ml.Nodes()
 }
 
-func (c *cluster) NodesByPartitionKey(pKey string) Nodes {
+func (c *cluster) NodesByPartitionKey(pKey uint64) Nodes {
 	nodes := c.Nodes()
 	nodesUsed := make(map[*Node]bool, len(nodes))
 	retNodes := make(Nodes, 0, len(nodes))
@@ -78,15 +77,15 @@ func (c *cluster) NodesByPartitionKey(pKey string) Nodes {
 			break
 		}
 
-		nodeName := c.HashRing().Get(strconv.Itoa(i) + pKey)
+		hashedNodeIndex := c.HashRing().Get(uint64(i)+pKey, len(nodes))
 		useNextNode := false
 	nodeLoop:
 		for j := 0; ; j++ {
 			if j == 2 {
 				panic("iterated through all nodes twice and still couldn't find a match")
 			}
-			for _, n := range nodes {
-				if n.Name() == nodeName || useNextNode {
+			for k, n := range nodes {
+				if int32(k) == hashedNodeIndex || useNextNode {
 					if _, ok := nodesUsed[n]; ok {
 						useNextNode = true
 						continue
@@ -101,12 +100,12 @@ func (c *cluster) NodesByPartitionKey(pKey string) Nodes {
 	return retNodes
 }
 
-func PartitionKey(salt []byte, end time.Time) string {
+func PartitionKey(salt []byte, end time.Time) uint64 {
 	// FIXME filter quantile and le when hashing for data locality?
 	buf := make([]byte, 0, len(salt)+len(primaryKeyDateFormat))
 	buf = append(buf, salt...)
 	buf = append(buf, end.Format(primaryKeyDateFormat)...)
-	return string(buf)
+	return xxhash.Sum64(buf)
 }
 
 func (c *cluster) ReplicationFactor() int {
@@ -184,7 +183,6 @@ type eventDelegate struct {
 
 func (e *eventDelegate) NotifyJoin(n *memberlist.Node) {
 	e.log.Infof("Node joined: %s on %s", n.Name, n.Address())
-	e.cluster.HashRing().Add(n.Name)
 }
 
 func (e *eventDelegate) NotifyLeave(n *memberlist.Node) {
@@ -216,6 +214,6 @@ type Cluster interface {
 	HashRing() hashring.HashRing
 	LocalNode() *Node
 	Nodes() Nodes
-	NodesByPartitionKey(string) Nodes
+	NodesByPartitionKey(uint64) Nodes
 	ReplicationFactor() int
 }

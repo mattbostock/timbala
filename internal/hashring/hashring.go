@@ -1,16 +1,17 @@
 package hashring
 
-import "github.com/golang/groupcache/consistenthash"
+import jump "github.com/dgryski/go-jump"
 
-func New(replicationFactor, vnodes int) *hashRing {
-	return &hashRing{consistenthash.New(replicationFactor*vnodes, nil)}
+func New() *hashRing {
+	return &hashRing{}
 }
 
-type hashRing struct {
-	*consistenthash.Map
+type hashRing struct{}
+
+func (h *hashRing) Get(key uint64, numBuckets int) int32 {
+	return jump.Hash(key, numBuckets)
 }
 
 type HashRing interface {
-	Add(...string)
-	Get(string) string
+	Get(uint64, int) int32
 }
