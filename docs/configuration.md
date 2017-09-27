@@ -15,8 +15,8 @@ Command-line flag | Description | Default
 `--data-directory` | The directory where data should be stored for the local node. Will be created if it does not exist. | `./data`
 `--http-advertise-addr` | The host and port to advertise to peer nodes for HTTP communication | `localhost:9080`
 `--http-bind-addr` | The host and port to bind to for HTTP communication | `localhost:9080`
-`--peer-advertise-addr` | The host and port to advertise to peer nodes for gossip communication | `localhost:7946`
-`--peer-bind-addr` | The host and port to bind to for gossip communication | `localhost:7946`
+`--gossip-advertise-addr` | The host and port to advertise to peer nodes for gossip communication | `localhost:7946`
+`--gossip-bind-addr` | The host and port to bind to for gossip communication | `localhost:7946`
 `--peers` | A list of peers to connect to to form a cluster; one peer per flag | No default
 `--log-level` | Logging verbosity level; one of `debug`, `info`, `warning`, `error` or `fatal` | `info`
 
