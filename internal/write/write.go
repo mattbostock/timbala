@@ -22,10 +22,13 @@ import (
 )
 
 const (
-	HttpHeaderInternalWrite = "X-AthensDB-Internal-Write-Version"
-	Route                   = "/receive"
+	HttpHeaderInternalWrite        = "X-AthensDB-Internal-Write-Version"
+	HttpHeaderInternalWriteVersion = "0.0.1"
+	Route                          = "/receive"
 
-	numPreallocTimeseries = 1e5
+	httpHeaderRemoteWrite        = "X-Prometheus-Remote-Write-Version"
+	httpHeaderRemoteWriteVersion = "0.1.0"
+	numPreallocTimeseries        = 1e5
 )
 
 type Writer interface {
@@ -235,9 +238,8 @@ func (wr *writer) remoteWrite(sNodeMap seriesNodeMap) error {
 			}
 			nodeReq.Header.Add("Content-Encoding", "snappy")
 			nodeReq.Header.Set("Content-Type", "application/x-protobuf")
-			// FIXME move version numbers into constants
-			nodeReq.Header.Set("X-Prometheus-Remote-Write-Version", "0.1.0")
-			nodeReq.Header.Set(HttpHeaderInternalWrite, "0.0.1")
+			nodeReq.Header.Set(httpHeaderRemoteWrite, httpHeaderRemoteWriteVersion)
+			nodeReq.Header.Set(HttpHeaderInternalWrite, HttpHeaderInternalWriteVersion)
 
 			// FIXME set timeout using context
 			httpResp, err := ctxhttp.Do(context.TODO(), http.DefaultClient, nodeReq)
