@@ -1,17 +1,10 @@
 ---
 language: go
 
-go:
-  - 1.9.x
-  - tip
+go: 1.9.x
 
 services:
   - docker
-
-matrix:
-  allow_failures:
-    - tip
-  fast_finish: true
 
 before_install:
   - sudo apt-get update
