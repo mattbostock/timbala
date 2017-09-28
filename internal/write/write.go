@@ -133,7 +133,7 @@ func (wr *writer) Handler(w http.ResponseWriter, r *http.Request) {
 		for _, s := range ts.Samples {
 			timestamp := time.Unix(s.Timestamp/1000, (s.Timestamp-s.Timestamp/1000)*1e6)
 			// FIXME: Avoid panic if the cluster is not yet initialised
-			pKey := cluster.PartitionKey(pSalt, timestamp)
+			pKey := cluster.PartitionKey(pSalt, timestamp, mHash)
 			for _, n := range wr.clstr.NodesByPartitionKey(pKey) {
 				if _, ok := seriesToNodes[*n][mHash]; !ok {
 					// FIXME handle change in cluster size
