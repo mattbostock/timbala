@@ -24,6 +24,7 @@ import (
 const (
 	HttpHeaderInternalWrite        = "X-AthensDB-Internal-Write-Version"
 	HttpHeaderInternalWriteVersion = "0.0.1"
+	HttpHeaderPartitionKeySalt     = "X-AthensDB-Partition-Key-Salt"
 	Route                          = "/receive"
 
 	httpHeaderRemoteWrite        = "X-Prometheus-Remote-Write-Version"
@@ -116,6 +117,7 @@ func (wr *writer) Handler(w http.ResponseWriter, r *http.Request) {
 		seriesToNodes[*n] = make(seriesMap, numPreallocTimeseries)
 	}
 
+	pSalt := []byte(r.Header.Get(HttpHeaderPartitionKeySalt))
 	for _, ts := range req.Timeseries {
 		m := make(labels.Labels, 0, len(ts.Labels))
 		for _, l := range ts.Labels {
@@ -131,7 +133,7 @@ func (wr *writer) Handler(w http.ResponseWriter, r *http.Request) {
 		for _, s := range ts.Samples {
 			timestamp := time.Unix(s.Timestamp/1000, (s.Timestamp-s.Timestamp/1000)*1e6)
 			// FIXME: Avoid panic if the cluster is not yet initialised
-			pKey := cluster.PartitionKey([]byte{}, timestamp)
+			pKey := cluster.PartitionKey(pSalt, timestamp)
 			for _, n := range wr.clstr.NodesByPartitionKey(pKey) {
 				if _, ok := seriesToNodes[*n][mHash]; !ok {
 					// FIXME handle change in cluster size
