@@ -22,9 +22,9 @@ import (
 )
 
 const (
-	HttpHeaderInternalWrite        = "X-AthensDB-Internal-Write-Version"
-	HttpHeaderInternalWriteVersion = "0.0.1"
-	HttpHeaderPartitionKeySalt     = "X-AthensDB-Partition-Key-Salt"
+	HTTPHeaderInternalWrite        = "X-AthensDB-Internal-Write-Version"
+	HTTPHeaderInternalWriteVersion = "0.0.1"
+	HTTPHeaderPartitionKeySalt     = "X-AthensDB-Partition-Key-Salt"
 	Route                          = "/receive"
 
 	httpHeaderRemoteWrite        = "X-Prometheus-Remote-Write-Version"
@@ -80,7 +80,7 @@ func (wr *writer) Handler(w http.ResponseWriter, r *http.Request) {
 
 	// This is an internal write, so don't replicate it to other nodes
 	// This case is very common, to make it fast
-	if r.Header.Get(HttpHeaderInternalWrite) != "" {
+	if r.Header.Get(HTTPHeaderInternalWrite) != "" {
 		wr.mu.Lock()
 		appender, err := wr.store.Appender()
 		if err != nil {
@@ -117,7 +117,7 @@ func (wr *writer) Handler(w http.ResponseWriter, r *http.Request) {
 		seriesToNodes[*n] = make(seriesMap, numPreallocTimeseries)
 	}
 
-	pSalt := []byte(r.Header.Get(HttpHeaderPartitionKeySalt))
+	pSalt := []byte(r.Header.Get(HTTPHeaderPartitionKeySalt))
 	for _, ts := range req.Timeseries {
 		m := make(labels.Labels, 0, len(ts.Labels))
 		for _, l := range ts.Labels {
@@ -241,7 +241,7 @@ func (wr *writer) remoteWrite(sNodeMap seriesNodeMap) error {
 			nodeReq.Header.Add("Content-Encoding", "snappy")
 			nodeReq.Header.Set("Content-Type", "application/x-protobuf")
 			nodeReq.Header.Set(httpHeaderRemoteWrite, httpHeaderRemoteWriteVersion)
-			nodeReq.Header.Set(HttpHeaderInternalWrite, HttpHeaderInternalWriteVersion)
+			nodeReq.Header.Set(HTTPHeaderInternalWrite, HTTPHeaderInternalWriteVersion)
 
 			// FIXME set timeout using context
 			httpResp, err := ctxhttp.Do(context.TODO(), http.DefaultClient, nodeReq)
