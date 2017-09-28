@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cespare/xxhash"
 	"github.com/hashicorp/memberlist"
 	"github.com/mattbostock/athensdb/internal/hashring"
 	"github.com/mattbostock/athensdb/internal/test/testutil"
@@ -30,7 +31,7 @@ var (
 )
 
 func TestMain(m *testing.M) {
-	samples = testutil.GenerateDataSamples(numSamples, 1, 24*time.Hour)
+	samples = testutil.GenerateDataSamples(numSamples, 1, time.Second)
 	os.Exit(m.Run())
 }
 
@@ -75,7 +76,7 @@ func testSampleDistribution(t *testing.T, clstr Cluster, samples model.Samples) 
 	var replicationSpread stats.Float64Data
 	for _, s := range samples {
 		spread := make(map[string]bool)
-		pKey := PartitionKey([]byte{}, s.Timestamp.Time())
+		pKey := PartitionKey([]byte{}, s.Timestamp.Time(), xxhash.Sum64String(s.Metric.String()))
 		for _, n := range clstr.NodesByPartitionKey(pKey) {
 			buckets[n.Name()] = append(buckets[n.Name()], s)
 			spread[n.Name()] = true

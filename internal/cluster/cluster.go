@@ -100,12 +100,12 @@ func (c *cluster) NodesByPartitionKey(pKey uint64) Nodes {
 	return retNodes
 }
 
-func PartitionKey(salt []byte, end time.Time) uint64 {
+func PartitionKey(salt []byte, end time.Time, metricHash uint64) uint64 {
 	// FIXME filter quantile and le when hashing for data locality?
 	buf := make([]byte, 0, len(salt)+len(primaryKeyDateFormat))
 	buf = append(buf, salt...)
 	buf = append(buf, end.Format(primaryKeyDateFormat)...)
-	return xxhash.Sum64(buf)
+	return xxhash.Sum64(buf) + metricHash
 }
 
 func (c *cluster) ReplicationFactor() int {
