@@ -1,5 +1,5 @@
 all: build test
-.PHONY: all bench build clean integration savedeps servedocs test testdeps testdocs
+.PHONY: all bench build checkbench clean integration savedeps servedocs test testdeps testdocs
 
 MKDOCS_MATERIAL_VERSION = 1.5.4
 VERSION = $(shell git describe --always | tr -d '\n'; test -z "`git status --porcelain`" || echo '-dirty')
@@ -9,6 +9,10 @@ bench:
 
 build:
 	@CGO_ENABLED=0 go install -ldflags "-X main.version=$(VERSION)" ./cmd/athensdb/
+
+checkbench:
+	@go build -tags bench ./internal/test/bench
+	@docker-compose -f internal/test/bench/docker-compose.yml config -q
 
 clean:
 	@docker-compose --file internal/test/bench/docker-compose.yml rm -f
