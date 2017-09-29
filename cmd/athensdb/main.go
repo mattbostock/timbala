@@ -99,6 +99,7 @@ func main() {
 		"Log level",
 	).Default(log.InfoLevel.String()).Enum("debug", "info", "warn", "panic", "fatal")
 
+	kingpin.HelpFlag.Short('h')
 	_, err := kingpin.Version(version).
 		DefaultEnvars().
 		Parse(os.Args[1:])
