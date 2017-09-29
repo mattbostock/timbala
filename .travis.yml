@@ -22,4 +22,5 @@ script:
   - make build
   - make test
   - make testdocs
+  - make checkbench
   - make integration
