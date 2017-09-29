@@ -21,7 +21,8 @@ import (
 )
 
 const (
-	numSamples int = 1e5
+	histogramDisplayWidth     = 50
+	numSamples            int = 1e5
 )
 
 var (
@@ -89,7 +90,8 @@ func testSampleDistribution(t *testing.T, clstr Cluster, samples model.Samples) 
 
 	for k := range buckets {
 		percent := float64(len(buckets[k])) / float64(len(samples)*clstr.ReplicationFactor()) * 100
-		fmt.Printf("Node %-2s: %-100s %5.2f%%; %d samples\n", k, strings.Repeat("#", int(percent)), percent, len(buckets[k]))
+		format := "Node %-2s: %-" + strconv.Itoa(histogramDisplayWidth) + "s %5.2f%%; %d samples\n"
+		fmt.Printf(format, k, strings.Repeat("#", int(percent/(100/histogramDisplayWidth))), percent, len(buckets[k]))
 		sampleData = append(sampleData, float64(len(buckets[k])))
 	}
 
@@ -152,7 +154,8 @@ func testSampleDistribution(t *testing.T, clstr Cluster, samples model.Samples) 
 		}
 
 		percent := float64(samplesInBucket) / float64(len(samples)) * 100
-		fmt.Printf("%-2d nodes: %-100s %5.2f%%; %d samples\n", i, strings.Repeat("#", int(percent)), percent, samplesInBucket)
+		format := "%-2d nodes: %-" + strconv.Itoa(histogramDisplayWidth) + "s %5.2f%%; %d samples\n"
+		fmt.Printf(format, i, strings.Repeat("#", int(percent/(100/histogramDisplayWidth))), percent, samplesInBucket)
 
 		if i == 0 && samplesInBucket > 0 {
 			t.Fatalf("%d samples were not allocated to any nodes", samplesInBucket)
