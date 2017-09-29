@@ -104,19 +104,19 @@ func main() {
 		DefaultEnvars().
 		Parse(os.Args[1:])
 	if err != nil {
-		logFlagFatal(err)
+		kingpin.FatalUsage(err.Error())
 	}
 
 	if config.httpAdvertiseAddr.IP == nil || config.httpAdvertiseAddr.IP.IsUnspecified() {
-		logFlagFatal("must specify host or IP for --http-advertise-addr")
+		kingpin.FatalUsage("must specify host or IP for --http-advertise-addr")
 	}
 	if config.gossipAdvertiseAddr.IP == nil || config.gossipAdvertiseAddr.IP.IsUnspecified() {
-		logFlagFatal("must specify host or IP for --gossip-advertise-addr")
+		kingpin.FatalUsage("must specify host or IP for --gossip-advertise-addr")
 	}
 
 	lvl, err := log.ParseLevel(*level)
 	if err != nil {
-		kingpin.Fatalf("could not parse log level %q", *level)
+		kingpin.FatalUsage("could not parse log level %q", *level)
 	}
 	log.SetLevel(lvl)
 	log.SetFormatter(&log.JSONFormatter{})
@@ -199,8 +199,4 @@ func main() {
 	log.Infof("Advertising to cluster as %s for peer gossip; %s for HTTP", config.gossipAdvertiseAddr, config.httpAdvertiseAddr)
 	log.Infof("%d nodes in cluster: %s", len(clstr.Nodes()), clstr.Nodes())
 	log.Fatal(http.ListenAndServe(config.httpBindAddr.String(), router))
-}
-
-func logFlagFatal(v ...interface{}) {
-	log.Fatalf("%s: error: %s", os.Args[0], fmt.Sprint(v...))
 }
