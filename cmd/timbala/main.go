@@ -12,9 +12,9 @@ import (
 	"strconv"
 	"time"
 
-	v1API "github.com/mattbostock/athensdb/internal/api/v1"
-	"github.com/mattbostock/athensdb/internal/cluster"
-	"github.com/mattbostock/athensdb/internal/write"
+	v1API "github.com/mattbostock/timbala/internal/api/v1"
+	"github.com/mattbostock/timbala/internal/cluster"
+	"github.com/mattbostock/timbala/internal/write"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/route"
@@ -27,7 +27,7 @@ import (
 )
 
 const (
-	applicationName = "athensdb"
+	applicationName = "timbala"
 
 	defaultDataDir  = "./data"
 	defaultHTTPAddr = "localhost:9080"
@@ -194,7 +194,7 @@ func main() {
 	router.Get(metricsRoute, promhttp.Handler().ServeHTTP)
 
 	absoluteDataDir, _ := filepath.Abs(config.dataDir)
-	log.Infof("Starting AthensDB node %s; data will be stored in %s", clstr.LocalNode(), absoluteDataDir)
+	log.Infof("Starting Timbala node %s; data will be stored in %s", clstr.LocalNode(), absoluteDataDir)
 	log.Infof("Binding to %s for peer gossip; %s for HTTP", config.gossipBindAddr, config.httpBindAddr)
 	log.Infof("Advertising to cluster as %s for peer gossip; %s for HTTP", config.gossipAdvertiseAddr, config.httpAdvertiseAddr)
 	log.Infof("%d nodes in cluster: %s", len(clstr.Nodes()), clstr.Nodes())

@@ -1,10 +1,10 @@
 # Configuration
 
-AthensDB can be configured using command-line options or using environment
-variables prefixed with `ATHENSDB_`.
+Timbala can be configured using command-line options or using environment
+variables prefixed with `TIMBALA_`.
 
-AthensDB aims to keep user-supplied configuration a minimum to keep complexity
-to a minimum, both for the AthensDB codebase and for its users.
+Timbala aims to keep user-supplied configuration a minimum to keep complexity
+to a minimum, both for the Timbala codebase and for its users.
 
 The 'immutable' configuration which is hard-coded is documented below.
 
@@ -21,7 +21,7 @@ Command-line flag | Description | Default
 `--log-level` | Logging verbosity level; one of `debug`, `info`, `warning`, `error` or `fatal` | `info`
 
 The same configuration options can be set as environment variables using the
-`ATHENSDB_` prefix. For example, `ATHENSDB_LOG_LEVEL=debug` is equivalent to
+`TIMBALA_` prefix. For example, `TIMBALA_LOG_LEVEL=debug` is equivalent to
 `--log-level=debug`.
 
 ## Immutable constants
@@ -34,4 +34,4 @@ Constant | Description | Value
 - | - | -
 Replication factor | How many copies of a time-series will stored across a cluster | 3
 
-[raise a GitHub issue]: https://github.com/mattbostock/athensdb/issues/new
+[raise a GitHub issue]: https://github.com/mattbostock/timbala/issues/new

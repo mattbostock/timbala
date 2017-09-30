@@ -60,7 +60,7 @@ amd64 architecture) should support at minimum:
 ## Availability
 
 Availability for the write path, i.e. ingestion of data, is a first-class
-design goal in AthensDB.
+design goal in Timbala.
 
 Availability for the read path, i.e. querying data, is a secondary design goal.
 A human can retry a query later, whereas the database must always be able to

@@ -13,8 +13,8 @@ import (
 
 	"github.com/cespare/xxhash"
 	"github.com/hashicorp/memberlist"
-	"github.com/mattbostock/athensdb/internal/hashring"
-	"github.com/mattbostock/athensdb/internal/test/testutil"
+	"github.com/mattbostock/timbala/internal/hashring"
+	"github.com/mattbostock/timbala/internal/test/testutil"
 	"github.com/montanaflynn/stats"
 	"github.com/prometheus/common/model"
 	"github.com/sirupsen/logrus"

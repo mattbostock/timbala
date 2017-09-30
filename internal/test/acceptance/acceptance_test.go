@@ -11,13 +11,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mattbostock/athensdb/internal/test/testutil"
+	"github.com/mattbostock/timbala/internal/test/testutil"
 	"github.com/prometheus/common/model"
 )
 
 // FIXME: Ensure that the binary is the one output by the Makefile and not some
 // other binary found in $PATH
-const executable = "athensdb"
+const executable = "timbala"
 
 // FIXME: Set this explicitly when executing the binary
 var httpBaseURL = "http://localhost:9080"
@@ -57,7 +57,7 @@ func TestMetrics(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !strings.Contains(string(body), "athensdb_build_info") {
+	if !strings.Contains(string(body), "timbala_build_info") {
 		t.Fatal("No build_info metric found")
 	}
 	if !strings.Contains(string(body), "prometheus_engine") {

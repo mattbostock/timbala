@@ -10,7 +10,7 @@ import (
 
 	"github.com/cespare/xxhash"
 	"github.com/hashicorp/memberlist"
-	"github.com/mattbostock/athensdb/internal/hashring"
+	"github.com/mattbostock/timbala/internal/hashring"
 	"github.com/sirupsen/logrus"
 )
 

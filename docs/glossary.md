@@ -20,4 +20,4 @@ time-series:
 
     http_requests_total{code="404"}
     http_requests_total{code="200"}
-    athensdb_build_info{version="0.0.1"}
+    timbala_build_info{version="0.0.1"}

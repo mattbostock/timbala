@@ -45,7 +45,7 @@ are generalised solutions that are not specific to time-series storage and
 therefore have a large number of configuration options. For example, OpenTSDB
 requires Apache HBase, which requires HDFS, which requires Zookeeper.
 
-To reduce the operational burden, AthensDB:
+To reduce the operational burden, Timbala:
 
 - keeps operator-specified configuration options to a minimum
 

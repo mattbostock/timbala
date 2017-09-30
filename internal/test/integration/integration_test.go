@@ -7,14 +7,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mattbostock/athensdb/internal/test/testutil"
+	"github.com/mattbostock/timbala/internal/test/testutil"
 	"github.com/prometheus/common/model"
 )
 
-var athensDBAddr = []string{
-	"http://athensdb_1:9080",
-	"http://athensdb_2:9080",
-	"http://athensdb_3:9080",
+var timbalaAddr = []string{
+	"http://timbala_1:9080",
+	"http://timbala_2:9080",
+	"http://timbala_3:9080",
 }
 
 func TestPrometheusMetricsCanBeQueried(t *testing.T) {
@@ -24,7 +24,7 @@ func TestPrometheusMetricsCanBeQueried(t *testing.T) {
 	time.Sleep(4 * time.Second)
 
 	var wg sync.WaitGroup
-	for _, a := range athensDBAddr {
+	for _, a := range timbalaAddr {
 		wg.Add(1)
 		go func(addr string) {
 			defer wg.Done()
