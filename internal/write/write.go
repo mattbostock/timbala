@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/golang/snappy"
-	"github.com/mattbostock/athensdb/internal/cluster"
+	"github.com/mattbostock/timbala/internal/cluster"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/prometheus/prometheus/storage"
@@ -22,9 +22,9 @@ import (
 )
 
 const (
-	HTTPHeaderInternalWrite        = "X-AthensDB-Internal-Write-Version"
+	HTTPHeaderInternalWrite        = "X-Timbala-Internal-Write-Version"
 	HTTPHeaderInternalWriteVersion = "0.0.1"
-	HTTPHeaderPartitionKeySalt     = "X-AthensDB-Partition-Key-Salt"
+	HTTPHeaderPartitionKeySalt     = "X-Timbala-Partition-Key-Salt"
 	Route                          = "/receive"
 
 	httpHeaderRemoteWrite        = "X-Prometheus-Remote-Write-Version"

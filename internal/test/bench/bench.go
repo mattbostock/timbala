@@ -10,7 +10,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/mattbostock/athensdb/internal/test/testutil"
+	"github.com/mattbostock/timbala/internal/test/testutil"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/tsdb/labels"
@@ -24,10 +24,10 @@ const (
 )
 
 var (
-	athensDBAddr = []string{
-		"http://athensdb_1:9080",
-		"http://athensdb_2:9080",
-		"http://athensdb_3:9080",
+	timbalaAddr = []string{
+		"http://timbala_1:9080",
+		"http://timbala_2:9080",
+		"http://timbala_3:9080",
 	}
 	uniqueSeries = hllpp.New()
 
@@ -39,12 +39,12 @@ var (
 	samplesTotal = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: applicationName,
 		Name:      "samples_sent_total",
-		Help:      "Number of samples sent to AthensDB",
+		Help:      "Number of samples sent to Timbala",
 	})
 	writeRequestsTotal = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: applicationName,
 		Name:      "write_requests_total",
-		Help:      "Number of successful write requests sent to AthensDB",
+		Help:      "Number of successful write requests sent to Timbala",
 	})
 )
 
@@ -55,9 +55,9 @@ func init() {
 }
 
 func main() {
-	workersPerNode := 4 * int(math.Min(1, float64(runtime.NumCPU()/len(athensDBAddr))))
+	workersPerNode := 4 * int(math.Min(1, float64(runtime.NumCPU()/len(timbalaAddr))))
 
-	for _, url := range athensDBAddr {
+	for _, url := range timbalaAddr {
 		for i := 0; i < workersPerNode; i++ {
 			go func(url string) {
 				for {

@@ -5,7 +5,7 @@ The are a number of existing time-series databases;
 [Hawkular][], [Heroic][], [InfluxDB][], [KairosDB][], [kdb+][], [OpenTSDB][],
 [Prometheus][], [Riak TS][], [Timescale][], [Vulcan][], and [Warp10][].
 
-AthensDB has the following distinguishing combination of features:
+Timbala has the following distinguishing combination of features:
 
 - high availability and throughput for data ingestion
 

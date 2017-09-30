@@ -1,8 +1,8 @@
 # Requirements
 
-AthensDB currently supports Linux only.
+Timbala currently supports Linux only.
 
-To simplify development, AthensDB assumes, though is not necessarily optimised
+To simplify development, Timbala assumes, though is not necessarily optimised
 for:
 
 - SSD storage

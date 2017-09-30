@@ -1,15 +1,14 @@
-site_name: AthensDB
+site_name: Timbala
 site_description: Durable time-series database that's API-compatible with Prometheus.
 site_author: Matt Bostock
-site_url: https://athensdb.io/docs/
-site_favicon: favicon.ico
+site_url: https://timbala.io/docs/
 
 # Allow GitHub edits
 edit_uri: edit/master/docs
 
 # Repository
-repo_name: mattbostock/athensdb
-repo_url: https://github.com/mattbostock/athensdb
+repo_name: mattbostock/timbala
+repo_url: https://github.com/mattbostock/timbala
 
 # Copyright
 copyright: 'Copyright &copy; 2017 Matt Bostock'
@@ -27,11 +26,11 @@ extra:
     accent: teal
   social:
     - type: globe
-      link: https://athensdb.io
+      link: https://timbala.io
     - type: github
-      link: https://github.com/mattbostock/athensdb
+      link: https://github.com/mattbostock/timbala
     - type: twitter
-      link: https://twitter.com/athensdb
+      link: https://twitter.com/TimbalaDB
 
 # Extensions
 markdown_extensions:

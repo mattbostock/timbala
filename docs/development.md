@@ -1,6 +1,6 @@
 # Development philosophy
 
-AthensDB aims to:
+Timbala aims to:
 
 - prefer simplicity over complexity
 - state assumptions explicitly

@@ -8,7 +8,7 @@ bench:
 	@docker-compose --file internal/test/bench/docker-compose.yml up --build
 
 build:
-	@CGO_ENABLED=0 go install -ldflags "-X main.version=$(VERSION)" ./cmd/athensdb/
+	@CGO_ENABLED=0 go install -ldflags "-X main.version=$(VERSION)" ./cmd/timbala/
 
 checkbench:
 	@go build -tags bench ./internal/test/bench

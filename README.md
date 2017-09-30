@@ -3,9 +3,9 @@
 This project is an early alpha, written for education purposes. Please don't
 consider putting it into Production.
 
-# AthensDB [![Build Status](https://travis-ci.com/mattbostock/athensdb.svg?token=EhqoSPmXWFAXy2qpEaqr&branch=master)](https://travis-ci.com/mattbostock/athensdb)
+# Timbala [![Build Status](https://travis-ci.com/mattbostock/timbala.svg?token=EhqoSPmXWFAXy2qpEaqr&branch=master)](https://travis-ci.com/mattbostock/timbala)
 
-AthensDB is a distributed, fault-tolerant time series database that supports PromQL.
+Timbala is a distributed, fault-tolerant time series database that supports PromQL.
 
 It is intended to provide durable long-term storage for multi-dimensional time
 series data.
@@ -19,11 +19,11 @@ query language.
 foremost for reliability, clustering and durable storage are explicit project
 non-goals.
 
-AthensDB is intended for use as a secondary, durable, data store for time series
+Timbala is intended for use as a secondary, durable, data store for time series
 data. It supports PromQL and the Prometheus query API, but does not depend on
 Prometheus.
 
-Data stored in AthensDB can be visualised using [Grafana][].
+Data stored in Timbala can be visualised using [Grafana][].
 
 [Prometheus]: https://prometheus.io/
 [Grafana]: http://grafana.org/

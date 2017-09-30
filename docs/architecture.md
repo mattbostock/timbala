@@ -2,7 +2,7 @@
 
 ## Clustering
 
-Membership of the cluster will be determined using a gossip protocol. AthensDB
+Membership of the cluster will be determined using a gossip protocol. Timbala
 will use Hashicorp's Memberlist library, which uses a modified implementation
 of the Scalable Weakly-consistent Infection-style Process Group Membership
 (SWIM) protocol. Cluster membership data is the only shared state in the
@@ -16,7 +16,7 @@ replication factor.
 
 ## Ingestion
 
-AthensDB will implement the 'remote write' server API used by Prometheus.
+Timbala will implement the 'remote write' server API used by Prometheus.
 
 To ingest metrics into the database, clients must make HTTP requests to the
 'remote write' server API. A client can connect to any node to write data into
@@ -29,7 +29,7 @@ The node receiving the data will only confirm acceptance of the sample(s) once
 a at least one of the nodes that store those samples have confirmed acceptance.
 If no nodes are can be reached, the samples are rejected.
 
-AthensDB will reuse the same remote write API as used by clients for internal
+Timbala will reuse the same remote write API as used by clients for internal
 writes between nodes in the cluster. The node receiving the data samples will
 keep persistent connections to the nodes responsible for storing the
 time-series being ingested to ensure consistent throughput for frequent writes.
@@ -47,7 +47,7 @@ cluster, and should improve the predictability of system performance.
 
 ## Node-local storage
 
-For node-local storage AthensDB will reuse as much of the Prometheus storage
+For node-local storage Timbala will reuse as much of the Prometheus storage
 engine as is feasible. The Prometheus development branch for version 2.0 uses a
 new library 'tsdb' for the storage engine, written by one of the Prometheus
 developers, Fabian Reinartz. Although the new library is still very new and is
@@ -62,7 +62,7 @@ footprint of time-series data.
 Individual time series will be mapped to nodes using a hashring as described in
 the 'Clustering' section above.
 
-For mapping label names and label values to time series, AthensDB will use the
+For mapping label names and label values to time series, Timbala will use the
 indexes provided by the Prometheus tsdb library.
 
 The indexes will be decentralised and local to the node storing the data that
@@ -71,7 +71,7 @@ centralised index.
 
 ## Querying
 
-AthensDB will re-use the existing PromQL library used by Prometheus for the
+Timbala will re-use the existing PromQL library used by Prometheus for the
 query engine to avoid having to re-implement it.
 
 When a client sends a request to the query API, the query will be forwarded to

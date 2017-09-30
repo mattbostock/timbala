@@ -1,46 +1,46 @@
 version: '3.2'
 services:
-  athensdb_1:
+  timbala_1:
     build: ../../../
-    image: mattbostock/athensdb
-    hostname: athensdb_1
+    image: mattbostock/timbala
+    hostname: timbala_1
     command:
       - '--log-level=debug'
-      - '--http-advertise-addr=athensdb_1:9080'
+      - '--http-advertise-addr=timbala_1:9080'
       - '--http-bind-addr=:9080'
-      - '--gossip-advertise-addr=athensdb_1:7946'
+      - '--gossip-advertise-addr=timbala_1:7946'
       - '--gossip-bind-addr=:7946'
-      - '--peers=athensdb_2'
-      - '--peers=athensdb_3'
+      - '--peers=timbala_2'
+      - '--peers=timbala_3'
     tmpfs: /data
-  athensdb_2:
-    image: mattbostock/athensdb
-    hostname: athensdb_2
+  timbala_2:
+    image: mattbostock/timbala
+    hostname: timbala_2
     command:
       - '--log-level=debug'
-      - '--http-advertise-addr=athensdb_2:9080'
+      - '--http-advertise-addr=timbala_2:9080'
       - '--http-bind-addr=:9080'
-      - '--gossip-advertise-addr=athensdb_2:7946'
+      - '--gossip-advertise-addr=timbala_2:7946'
       - '--gossip-bind-addr=:7946'
-      - '--peers=athensdb_1'
-      - '--peers=athensdb_3'
-    tmpfs: /data
-    depends_on:
-      - athensdb_1
-  athensdb_3:
-    image: mattbostock/athensdb
-    hostname: athensdb_3
-    command:
-      - '--log-level=debug'
-      - '--http-advertise-addr=athensdb_3:9080'
-      - '--http-bind-addr=:9080'
-      - '--gossip-advertise-addr=athensdb_3:7946'
-      - '--gossip-bind-addr=:7946'
-      - '--peers=athensdb_1'
-      - '--peers=athensdb_2'
+      - '--peers=timbala_1'
+      - '--peers=timbala_3'
     tmpfs: /data
     depends_on:
-      - athensdb_1
+      - timbala_1
+  timbala_3:
+    image: mattbostock/timbala
+    hostname: timbala_3
+    command:
+      - '--log-level=debug'
+      - '--http-advertise-addr=timbala_3:9080'
+      - '--http-bind-addr=:9080'
+      - '--gossip-advertise-addr=timbala_3:7946'
+      - '--gossip-bind-addr=:7946'
+      - '--peers=timbala_1'
+      - '--peers=timbala_2'
+    tmpfs: /data
+    depends_on:
+      - timbala_1
   prometheus:
     image: prom/prometheus:v1.7.1
     command:
@@ -56,9 +56,9 @@ services:
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
-      - athensdb_1
-      - athensdb_2
-      - athensdb_3
+      - timbala_1
+      - timbala_2
+      - timbala_3
   integration_tests:
     build:
       context: ../../../
