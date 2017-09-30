@@ -1,0 +1,31 @@
+{
+  "builders": [
+    {
+      "boot_wait": "30s",
+      "boot_command": [
+        "root<enter><wait>",
+        "ifconfig eth0 up && udhcpc -i eth0<enter><wait10>",
+        "wget http://{{ .HTTPIP }}:{{ .HTTPPort }}/answers<enter><wait>",
+        "setup-alpine -f answers<enter><wait10>",
+        "alpine<enter><wait>",
+        "alpine<enter><wait10>",
+        "y<enter>",
+        "<wait10><wait10><wait10>",
+        "/etc/init.d/sshd stop<enter><wait>",
+        "eject -r<enter>",
+        "reboot<enter>"
+      ],
+      "guest_os_type": "Linux_64",
+      "headless": "false",
+      "http_directory": "http",
+      "iso_checksum": "a2ccdfc1fe608c085e1178c8b1e6bdb76146bc77cd202e4ad9a8f4651c941e524a6dc16823c75840c40fc5bc2e2ccfc658333b35175a5c7a2be368ee04723c53",
+      "iso_checksum_type": "sha512",
+      "iso_url": "http://dl-cdn.alpinelinux.org/alpine/v3.6/releases/x86_64/alpine-standard-3.6.2-x86_64.iso",
+      "shutdown_command": "poweroff",
+      "ssh_password": "alpine",
+      "ssh_username": "root",
+      "ssh_wait_timeout": "5m",
+      "type": "virtualbox-iso"
+    }
+  ]
+}
