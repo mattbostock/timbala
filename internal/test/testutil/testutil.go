@@ -114,7 +114,7 @@ func PostWriteRequest(baseURL string, req *prompb.WriteRequest) (*http.Response,
 	}
 
 	compressed := snappy.Encode(nil, data)
-	u := fmt.Sprintf("%s%s", baseURL, "/receive")
+	u := fmt.Sprintf("%s%s", baseURL, "/write")
 	resp, err := http.Post(u, "snappy", bytes.NewBuffer(compressed))
 	if err != nil {
 		return nil, err
