@@ -14,6 +14,7 @@ import (
 
 	v1API "github.com/mattbostock/timbala/internal/api/v1"
 	"github.com/mattbostock/timbala/internal/cluster"
+	"github.com/mattbostock/timbala/internal/read"
 	"github.com/mattbostock/timbala/internal/write"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -189,7 +190,9 @@ func main() {
 		log.Fatal("Failed to join the cluster: ", err)
 	}
 
+	reader := read.New(log.StandardLogger(), promtsdb.Adapter(localStorage))
 	writer := write.New(clstr, log.StandardLogger(), promtsdb.Adapter(localStorage))
+	router.Post(read.Route, reader.HandlerFunc)
 	router.Post(write.Route, writer.HandlerFunc)
 	router.Get(metricsRoute, promhttp.Handler().ServeHTTP)
 
