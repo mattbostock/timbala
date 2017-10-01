@@ -1,18 +1,25 @@
 package acceptance_test
 
 import (
+	"bytes"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
+	"reflect"
 	"strings"
 	"syscall"
 	"testing"
 	"time"
 
+	"github.com/gogo/protobuf/proto"
+	"github.com/golang/snappy"
+	"github.com/mattbostock/timbala/internal/read"
 	"github.com/mattbostock/timbala/internal/test/testutil"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/prompb"
 )
 
 // FIXME: Ensure that the binary is the one output by the Makefile and not some
@@ -150,6 +157,113 @@ func TestRemoteWriteThenQueryBack(t *testing.T) {
 	got := result.(model.Vector)[0].Value
 	if got != expected {
 		t.Fatalf("Expected %s, got %s", expected, got)
+	}
+}
+
+func TestRemoteWriteThenRemoteReadBack(t *testing.T) {
+	c := run()
+	defer teardown(c)
+
+	now := model.Now()
+	metricName := t.Name()
+	testSample := &model.Sample{
+		Metric:    make(model.Metric, 1),
+		Value:     1234,
+		Timestamp: now,
+	}
+	testSample.Metric[model.MetricNameLabel] = model.LabelValue(metricName)
+
+	req := testutil.GenerateRemoteRequest(model.Samples{testSample})
+	resp, err := testutil.PostWriteRequest(httpBaseURL, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("Expected HTTP status %d, got %d", http.StatusOK, resp.StatusCode)
+	}
+
+	readReq := &prompb.ReadRequest{
+		Queries: []*prompb.Query{{
+			StartTimestampMs: now.UnixNano() / int64(time.Millisecond),
+			EndTimestampMs:   now.UnixNano() / int64(time.Millisecond),
+			Matchers: []*prompb.LabelMatcher{
+				&prompb.LabelMatcher{
+					Type:  prompb.LabelMatcher_EQ,
+					Name:  labels.MetricName,
+					Value: metricName,
+				},
+			},
+		}},
+	}
+
+	data, err := proto.Marshal(readReq)
+	if err != nil {
+		t.Fatalf("Unable to marshal read request: %v", err)
+	}
+
+	compressed := snappy.Encode(nil, data)
+	httpReq, err := http.NewRequest("POST", httpBaseURL+read.Route, bytes.NewReader(compressed))
+	if err != nil {
+		t.Fatalf("Unable to create request: %v", err)
+	}
+	httpReq.Header.Add("Content-Encoding", "snappy")
+	httpReq.Header.Set("Content-Type", "application/x-protobuf")
+	httpReq.Header.Set("X-Prometheus-Remote-Read-Version", "0.1.0")
+
+	httpResp, err := http.DefaultClient.Do(httpReq)
+	if err != nil {
+		t.Fatalf("Error sending request: %v", err)
+	}
+	defer httpResp.Body.Close()
+
+	if httpResp.StatusCode/100 != 2 {
+		t.Fatalf("Server returned HTTP status %s", httpResp.Status)
+	}
+
+	compressed, err = ioutil.ReadAll(httpResp.Body)
+	if err != nil {
+		t.Fatalf("Error reading response: %v", err)
+	}
+
+	uncompressed, err := snappy.Decode(nil, compressed)
+	if err != nil {
+		t.Fatalf("Error reading response: %v", err)
+	}
+
+	var readResp prompb.ReadResponse
+	err = proto.Unmarshal(uncompressed, &readResp)
+	if err != nil {
+		t.Fatalf("Unnable to unmarshal response body: %v", err)
+	}
+
+	if len(readResp.Results) == 0 {
+		t.Fatal("Got no results")
+		return
+	}
+
+	if len(readResp.Results[0].Timeseries) == 0 {
+		t.Fatal("Got no timeseries in result")
+		return
+	}
+
+	expected := &prompb.TimeSeries{
+		Labels: []*prompb.Label{
+			&prompb.Label{
+				Name:  labels.MetricName,
+				Value: metricName,
+			},
+		},
+		Samples: []*prompb.Sample{
+			&prompb.Sample{
+				Timestamp: now.UnixNano() / int64(time.Millisecond),
+				Value:     1234.0,
+			},
+		},
+	}
+	got := readResp.Results[0].Timeseries[0]
+	if !reflect.DeepEqual(got, expected) {
+		t.Fatalf("Expected %v, got %v", expected, got)
 	}
 }
 
