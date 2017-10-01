@@ -33,7 +33,7 @@ const (
 )
 
 type Writer interface {
-	Handler(http.ResponseWriter, *http.Request)
+	HandlerFunc(http.ResponseWriter, *http.Request)
 }
 
 type writer struct {
@@ -51,7 +51,7 @@ func New(c cluster.Cluster, l *logrus.Logger, s storage.Storage) *writer {
 	}
 }
 
-func (wr *writer) Handler(w http.ResponseWriter, r *http.Request) {
+func (wr *writer) HandlerFunc(w http.ResponseWriter, r *http.Request) {
 	compressed, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		wr.log.Warningln(err)
