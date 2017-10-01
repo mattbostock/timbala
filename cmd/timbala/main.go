@@ -190,7 +190,7 @@ func main() {
 	}
 
 	writer := write.New(clstr, log.StandardLogger(), promtsdb.Adapter(localStorage))
-	router.Post(write.Route, writer.Handler)
+	router.Post(write.Route, writer.HandlerFunc)
 	router.Get(metricsRoute, promhttp.Handler().ServeHTTP)
 
 	absoluteDataDir, _ := filepath.Abs(config.dataDir)
