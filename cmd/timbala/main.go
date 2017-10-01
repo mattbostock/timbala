@@ -195,8 +195,8 @@ func main() {
 
 	absoluteDataDir, _ := filepath.Abs(config.dataDir)
 	log.Infof("Starting Timbala node %s; data will be stored in %s", clstr.LocalNode(), absoluteDataDir)
-	log.Infof("Binding to %s for peer gossip; %s for HTTP", config.gossipBindAddr, config.httpBindAddr)
-	log.Infof("Advertising to cluster as %s for peer gossip; %s for HTTP", config.gossipAdvertiseAddr, config.httpAdvertiseAddr)
+	log.Infof("Binding to %s for peer gossip; http://%s for HTTP", config.gossipBindAddr, config.httpBindAddr)
+	log.Infof("Advertising to cluster as %s for peer gossip; http://%s for HTTP", config.gossipAdvertiseAddr, config.httpAdvertiseAddr)
 	log.Infof("%d nodes in cluster: %s", len(clstr.Nodes()), clstr.Nodes())
 	log.Fatal(http.ListenAndServe(config.httpBindAddr.String(), router))
 }
