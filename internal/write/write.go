@@ -25,7 +25,7 @@ const (
 	HTTPHeaderInternalWrite        = "X-Timbala-Internal-Write-Version"
 	HTTPHeaderInternalWriteVersion = "0.0.1"
 	HTTPHeaderPartitionKeySalt     = "X-Timbala-Partition-Key-Salt"
-	Route                          = "/receive"
+	Route                          = "/write"
 
 	httpHeaderRemoteWrite        = "X-Prometheus-Remote-Write-Version"
 	httpHeaderRemoteWriteVersion = "0.1.0"
