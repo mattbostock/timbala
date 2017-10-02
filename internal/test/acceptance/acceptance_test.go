@@ -101,7 +101,7 @@ func TestRemoteWrite(t *testing.T) {
 		Value:     1234,
 		Timestamp: model.Now(),
 	}
-	testSample.Metric[model.MetricNameLabel] = "foo"
+	testSample.Metric[model.MetricNameLabel] = model.LabelValue(t.Name())
 
 	req := testutil.GenerateRemoteRequest(model.Samples{testSample})
 	resp, err := testutil.PostWriteRequest(httpBaseURL, req)
@@ -118,14 +118,13 @@ func TestRemoteWriteThenQueryBack(t *testing.T) {
 	c := run()
 	defer teardown(c)
 
-	name := time.Now().Format("test_2006_01_02T15_04_05")
-
+	metricName := t.Name()
 	testSample := &model.Sample{
 		Metric:    make(model.Metric, 1),
 		Value:     1234,
 		Timestamp: model.Now(),
 	}
-	testSample.Metric[model.MetricNameLabel] = model.LabelValue(name)
+	testSample.Metric[model.MetricNameLabel] = model.LabelValue(metricName)
 
 	req := testutil.GenerateRemoteRequest(model.Samples{testSample})
 	resp, err := testutil.PostWriteRequest(httpBaseURL, req)
@@ -137,7 +136,7 @@ func TestRemoteWriteThenQueryBack(t *testing.T) {
 		t.Fatalf("Expected HTTP status %d, got %d", http.StatusOK, resp.StatusCode)
 	}
 
-	result, err := testutil.QueryAPI(httpBaseURL, name, time.Now())
+	result, err := testutil.QueryAPI(httpBaseURL, metricName, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
