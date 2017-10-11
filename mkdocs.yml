@@ -1,0 +1,72 @@
+site_name: Timbala
+site_description: Durable time-series database that's API-compatible with Prometheus.
+site_author: Matt Bostock
+site_url: https://timbala.io/docs/
+
+# Allow GitHub edits
+edit_uri: edit/master/docs
+
+# Repository
+repo_name: mattbostock/timbala
+repo_url: https://github.com/mattbostock/timbala
+
+# Copyright
+copyright: 'Copyright &copy; 2017 Matt Bostock'
+
+# Theme
+theme: material
+
+# Options
+extra:
+  feature:
+    tabs: true
+  palette:
+    primary: teal
+    accent: teal
+  social:
+    - type: globe
+      link: https://timbala.io
+    - type: github
+      link: https://github.com/mattbostock/timbala
+    - type: twitter
+      link: https://twitter.com/TimbalaDB
+
+# Extensions
+markdown_extensions:
+  - markdown.extensions.admonition
+  - markdown.extensions.codehilite(guess_lang=false)
+  - markdown.extensions.def_list
+  - markdown.extensions.footnotes
+  - markdown.extensions.meta
+  - markdown.extensions.toc(permalink=true)
+  - pymdownx.betterem(smart_enable=all)
+  - pymdownx.caret
+  - pymdownx.critic
+  - pymdownx.emoji:
+      emoji_generator: !!python/name:pymdownx.emoji.to_svg
+  - pymdownx.inlinehilite
+  - pymdownx.magiclink
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+  - pymdownx.superfences
+  - pymdownx.tasklist(custom_checkbox=true)
+  - pymdownx.tilde
+
+# Page tree
+pages:
+  - About:
+    - Intro: index.md
+    - 'Getting started': getting_started.md
+    - 'Use cases': use_cases.md
+  - Design:
+    - Rationale: rationale.md
+    - Goals: goals.md
+    - Assumptions: assumptions.md
+    - Architecture: architecture.md
+  - Community:
+    - Development: development.md
+
+# Google Analytics
+google_analytics:
+  - !!python/object/apply:os.getenv ["GOOGLE_ANALYTICS_KEY"]
+  - auto
