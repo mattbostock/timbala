@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net"
-	"sort"
 	"time"
 
 	"github.com/cespare/xxhash"
@@ -68,9 +67,6 @@ func (c *cluster) NodesByPartitionKey(pKey uint64) Nodes {
 	nodes := c.Nodes()
 	nodesUsed := make(map[*Node]bool, len(nodes))
 	retNodes := make(Nodes, 0, len(nodes))
-
-	// Sort nodes to ensure function is deterministic
-	sort.Stable(nodes)
 
 	for i := 0; i < c.ReplicationFactor(); i++ {
 		if len(nodesUsed) == c.ReplicationFactor() || len(nodesUsed) == len(nodes) {
