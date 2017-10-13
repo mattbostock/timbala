@@ -1,38 +1,38 @@
-# Proof of concept - do not use in Production
-
-This project is an early alpha, written for education purposes. Please don't
-consider putting it into Production.
-
 # Timbala [![Build Status](https://travis-ci.com/mattbostock/timbala.svg?token=EhqoSPmXWFAXy2qpEaqr&branch=master)](https://travis-ci.com/mattbostock/timbala)
 
-Timbala is a distributed, fault-tolerant time series database that supports PromQL.
+Timbala is a distributed, fault-tolerant time-series database intended to
+provide durable long-term storage for multi-dimensional metrics.
 
-It is intended to provide durable long-term storage for multi-dimensional time
-series data.
+It is designed to integrate easily with [Prometheus][], supports PromQL and is
+API-compatible with Prometheus, but can be used standalone.
 
-## Why?
-
-[Prometheus][] users often request durable storage that supports the PromQL
-query language.
-
-[Prometheus][] is a monitoring system that relies on time series. Designed
-foremost for reliability, clustering and durable storage are explicit project
-non-goals.
-
-Timbala is intended for use as a secondary, durable, data store for time series
-data. It supports PromQL and the Prometheus query API, but does not depend on
-Prometheus.
-
-Data stored in Timbala can be visualised using [Grafana][].
+Data stored in Timbala can be visualised using [Grafana][] by
+configuring a Prometheus data source pointing to Timbala.
 
 [Prometheus]: https://prometheus.io/
 [Grafana]: http://grafana.org/
 
-## High-level design goals
+## Project status
 
-- Ease of operation: one server binary and all nodes are treated equally
-- Failure-tolerant: no single points of failure; data is replicated across multiple nodes
-- Highly available: writes are prioritised over reads and availability is valued over consistency
-- Optimised for modern hardware: expects SSDs, takes advantage of multiple CPU cores and [NUMA][]
+Timbala is in pre-alpha and is not yet production-ready.
 
-[NUMA]: https://www.kernel.org/doc/Documentation/vm/numa
+**Please do not use it yet for any data that you care about.**
+
+## Design goals
+
+### Ease of operation
+
+- one server binary
+- no external dependencies
+- all nodes have the same role
+- all nodes can serve read and write requests
+
+### Fault-tolerant
+
+- no single points of failure
+- data is replicated and sharded across multiple nodes
+- planned features for read repair and active anti-entropy
+
+### Highly available
+
+- high write throughput and availability

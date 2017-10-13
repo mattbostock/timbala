@@ -6,8 +6,6 @@ variables prefixed with `TIMBALA_`.
 Timbala aims to keep user-supplied configuration a minimum to keep complexity
 to a minimum, both for the Timbala codebase and for its users.
 
-The 'immutable' configuration which is hard-coded is documented below.
-
 ## Configuration options
 
 Command-line flag | Description | Default
@@ -27,8 +25,9 @@ The same configuration options can be set as environment variables using the
 ## Immutable constants
 
 These values have been chosen as reasonable optimal values for most user
-environments. If you think they should be changed, or made user-configurable,
-please [raise a GitHub issue][].
+environments and are not user-configurable.
+
+If you think they should be changed, or made user-configurable, please [raise a GitHub issue][].
 
 Constant | Description | Value
 - | - | -
