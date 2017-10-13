@@ -1,7 +1,7 @@
 all: build test
 .PHONY: all bench build checkbench clean integration savedeps servedocs test testdeps testdocs
 
-MKDOCS_MATERIAL_VERSION = 1.5.4
+MKDOCS_MATERIAL_VERSION = 1.10.3
 VERSION = $(shell git describe --always | tr -d '\n'; test -z "`git status --porcelain`" || echo '-dirty')
 
 bench:
