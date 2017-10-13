@@ -20,6 +20,8 @@ theme: material
 extra:
   feature:
     tabs: true
+  logo:
+    icon: timeline
   palette:
     primary: teal
     accent: teal
