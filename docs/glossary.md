@@ -12,8 +12,8 @@ corrupt or is lost due to a node failure.
 
 A time-series, or a 'metric', measures the value of one singular thing over time.
 
-Specifically, a time-series is the unique combination of a metric name plus a
-label name plus a label value.
+Specifically, a single time-series is the unique combination of a metric name
+plus a label name plus a label value.
 
 For example, each of the below would be considered as three distinct
 time-series:
