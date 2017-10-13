@@ -77,6 +77,7 @@ pages:
     - Glossary: glossary.md
   - Community:
     - Development: development.md
+    - 'Code of conduct': code_of_conduct.md
 
 # Google Analytics
 google_analytics:
