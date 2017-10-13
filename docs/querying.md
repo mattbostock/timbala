@@ -1,7 +1,7 @@
 # Querying
 
 Timbala does not provide a user interface for querying; you are expected to
-use a third-party tool such as [Grafana][] to view your data.
+use the API or a third-party tool such as [Grafana][] to view your data.
 
 ## Grafana
 
@@ -16,7 +16,7 @@ Follow the [Prometheus documentation for Grafana][].
 ## Query language
 
 Timbala supports PromQL, as used by Prometheus. Please see the [Prometheus
-query documentation][] for details.
+query documentation][] for documentation on how PromQL works.
 
 Timbala makes no changes or additions to PromQL, so all queries that work in
 Prometheus will work in Timbala and vice-versa.
@@ -25,10 +25,10 @@ Prometheus will work in Timbala and vice-versa.
 
 ## HTTP API
 
-Timbala has a HTTP API that is compatible with the [Prometheus API][]. See the
-[Prometheus API][] documentation to learn how to use it.
+Timbala has a HTTP API that is compatible with the [Prometheus v1 API][]. See the
+[Prometheus v1 API][] documentation to learn how to use it.
 
-[Prometheus API]: https://prometheus.io/docs/querying/api/
+[Prometheus v1 API]: https://prometheus.io/docs/querying/api/
 
 ## 'Remote read' integration with Prometheus
 
