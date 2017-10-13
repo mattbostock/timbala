@@ -121,6 +121,7 @@ func main() {
 	}
 	log.SetLevel(lvl)
 	log.SetFormatter(&log.JSONFormatter{})
+	log.SetOutput(os.Stdout)
 
 	// FIXME: Set logger
 	localStorage, err := tsdb.Open(config.dataDir, nil, prometheus.DefaultRegisterer, &tsdb.Options{
