@@ -16,13 +16,13 @@ package promql
 import (
 	"fmt"
 	"math"
+	"os"
 	"runtime"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/value"
@@ -342,7 +342,7 @@ func (p *parser) recover(errp *error) {
 			buf := make([]byte, 64<<10)
 			buf = buf[:runtime.Stack(buf, false)]
 
-			log.Errorf("parser panic: %v\n%s", e, buf)
+			fmt.Fprintf(os.Stderr, "parser panic: %v\n%s", e, buf)
 			*errp = errUnexpected
 		} else {
 			*errp = e.(error)
@@ -703,8 +703,8 @@ func (p *parser) labels() []string {
 
 // aggrExpr parses an aggregation expression.
 //
-//		<aggr_op> (<Vector_expr>) [by <labels>] [keep_common]
-//		<aggr_op> [by <labels>] [keep_common] (<Vector_expr>)
+//		<aggr_op> (<Vector_expr>) [by|without <labels>]
+//		<aggr_op> [by|without <labels>] (<Vector_expr>)
 //
 func (p *parser) aggrExpr() *AggregateExpr {
 	const ctx = "aggregation"
@@ -714,7 +714,7 @@ func (p *parser) aggrExpr() *AggregateExpr {
 		p.errorf("expected aggregation operator but got %s", agop)
 	}
 	var grouping []string
-	var keepCommon, without bool
+	var without bool
 
 	modifiersFirst := false
 
@@ -724,11 +724,6 @@ func (p *parser) aggrExpr() *AggregateExpr {
 		}
 		p.next()
 		grouping = p.labels()
-		modifiersFirst = true
-	}
-	if p.peek().typ == itemKeepCommon {
-		p.next()
-		keepCommon = true
 		modifiersFirst = true
 	}
 
@@ -752,23 +747,14 @@ func (p *parser) aggrExpr() *AggregateExpr {
 			p.next()
 			grouping = p.labels()
 		}
-		if p.peek().typ == itemKeepCommon {
-			p.next()
-			keepCommon = true
-		}
-	}
-
-	if keepCommon && without {
-		p.errorf("cannot use 'keep_common' with 'without'")
 	}
 
 	return &AggregateExpr{
-		Op:               agop.typ,
-		Expr:             e,
-		Param:            param,
-		Grouping:         grouping,
-		Without:          without,
-		KeepCommonLabels: keepCommon,
+		Op:       agop.typ,
+		Expr:     e,
+		Param:    param,
+		Grouping: grouping,
+		Without:  without,
 	}
 }
 

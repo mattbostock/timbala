@@ -22,7 +22,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/prometheus/common/log"
+	"github.com/go-kit/kit/log"
 	"github.com/prometheus/common/model"
 
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -58,8 +58,7 @@ func TestAlertingRule(t *testing.T) {
 		expr,
 		time.Minute,
 		labels.FromStrings("severity", "{{\"c\"}}ritical"),
-		nil,
-		log.Base(),
+		nil, nil,
 	)
 
 	baseTime := time.Unix(0, 0)
@@ -167,7 +166,7 @@ func TestStaleness(t *testing.T) {
 		QueryEngine: engine,
 		Appendable:  storage,
 		Context:     context.Background(),
-		Logger:      log.Base(),
+		Logger:      log.NewNopLogger(),
 	}
 
 	expr, err := promql.ParseExpr("a + 1")
@@ -191,11 +190,11 @@ func TestStaleness(t *testing.T) {
 	group.Eval(time.Unix(1, 0))
 	group.Eval(time.Unix(2, 0))
 
-	querier, err := storage.Querier(0, 2000)
-	defer querier.Close()
+	querier, err := storage.Querier(context.Background(), 0, 2000)
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer querier.Close()
 	matcher, _ := labels.NewMatcher(labels.MatchEqual, model.MetricNameLabel, "a_plus_one")
 	samples, err := readSeriesSet(querier.Select(matcher))
 	if err != nil {
@@ -244,7 +243,7 @@ func readSeriesSet(ss storage.SeriesSet) (map[string][]promql.Point, error) {
 func TestCopyState(t *testing.T) {
 	oldGroup := &Group{
 		rules: []Rule{
-			NewAlertingRule("alert", nil, 0, nil, nil, log.Base()),
+			NewAlertingRule("alert", nil, 0, nil, nil, nil),
 			NewRecordingRule("rule1", nil, nil),
 			NewRecordingRule("rule2", nil, nil),
 			NewRecordingRule("rule3", nil, nil),
@@ -264,7 +263,7 @@ func TestCopyState(t *testing.T) {
 			NewRecordingRule("rule3", nil, nil),
 			NewRecordingRule("rule3", nil, nil),
 			NewRecordingRule("rule3", nil, nil),
-			NewAlertingRule("alert", nil, 0, nil, nil, log.Base()),
+			NewAlertingRule("alert", nil, 0, nil, nil, nil),
 			NewRecordingRule("rule1", nil, nil),
 			NewRecordingRule("rule4", nil, nil),
 		},

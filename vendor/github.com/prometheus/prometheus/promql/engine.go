@@ -15,6 +15,7 @@ package promql
 
 import (
 	"container/heap"
+	"context"
 	"fmt"
 	"math"
 	"runtime"
@@ -23,14 +24,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/log"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/prometheus/prometheus/pkg/value"
 	"github.com/prometheus/prometheus/storage"
-	"golang.org/x/net/context"
 
 	"github.com/prometheus/prometheus/util/stats"
 )
@@ -211,7 +212,7 @@ type Engine struct {
 
 // Queryable allows opening a storage querier.
 type Queryable interface {
-	Querier(mint, maxt int64) (storage.Querier, error)
+	Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error)
 }
 
 // NewEngine returns a new engine.
@@ -239,7 +240,7 @@ type EngineOptions struct {
 var DefaultEngineOptions = &EngineOptions{
 	MaxConcurrentQueries: 20,
 	Timeout:              2 * time.Minute,
-	Logger:               log.Base(),
+	Logger:               log.NewNopLogger(),
 }
 
 // NewInstantQuery returns an evaluation query for the given expression at the given time.
@@ -506,7 +507,7 @@ func (ng *Engine) populateIterators(ctx context.Context, s *EvalStmt) (storage.Q
 
 	mint := s.Start.Add(-maxOffset)
 
-	querier, err := ng.queryable.Querier(timestamp.FromTime(mint), timestamp.FromTime(s.End))
+	querier, err := ng.queryable.Querier(ctx, timestamp.FromTime(mint), timestamp.FromTime(s.End))
 	if err != nil {
 		return nil, err
 	}
@@ -517,7 +518,7 @@ func (ng *Engine) populateIterators(ctx context.Context, s *EvalStmt) (storage.Q
 			n.series, err = expandSeriesSet(querier.Select(n.LabelMatchers...))
 			if err != nil {
 				// TODO(fabxc): use multi-error.
-				ng.logger.Errorln("expand series set:", err)
+				level.Error(ng.logger).Log("msg", "error expanding series set", "err", err)
 				return false
 			}
 			for _, s := range n.series {
@@ -528,7 +529,7 @@ func (ng *Engine) populateIterators(ctx context.Context, s *EvalStmt) (storage.Q
 		case *MatrixSelector:
 			n.series, err = expandSeriesSet(querier.Select(n.LabelMatchers...))
 			if err != nil {
-				ng.logger.Errorln("expand series set:", err)
+				level.Error(ng.logger).Log("msg", "error expanding series set", "err", err)
 				return false
 			}
 			for _, s := range n.series {
@@ -580,17 +581,18 @@ func (ev *evaluator) error(err error) {
 // recover is the handler that turns panics into returns from the top level of evaluation.
 func (ev *evaluator) recover(errp *error) {
 	e := recover()
-	if e != nil {
-		if _, ok := e.(runtime.Error); ok {
-			// Print the stack trace but do not inhibit the running application.
-			buf := make([]byte, 64<<10)
-			buf = buf[:runtime.Stack(buf, false)]
+	if e == nil {
+		return
+	}
+	if _, ok := e.(runtime.Error); ok {
+		// Print the stack trace but do not inhibit the running application.
+		buf := make([]byte, 64<<10)
+		buf = buf[:runtime.Stack(buf, false)]
 
-			ev.logger.Errorf("parser panic: %v\n%s", e, buf)
-			*errp = fmt.Errorf("unexpected error")
-		} else {
-			*errp = e.(error)
-		}
+		level.Error(ev.logger).Log("msg", "runtime panic in parser", "err", e, "stacktrace", string(buf))
+		*errp = fmt.Errorf("unexpected error")
+	} else {
+		*errp = e.(error)
 	}
 }
 
@@ -677,7 +679,7 @@ func (ev *evaluator) eval(expr Expr) Value {
 	switch e := expr.(type) {
 	case *AggregateExpr:
 		Vector := ev.evalVector(e.Expr)
-		return ev.aggregation(e.Op, e.Grouping, e.Without, e.KeepCommonLabels, e.Param, Vector)
+		return ev.aggregation(e.Op, e.Grouping, e.Without, e.Param, Vector)
 
 	case *BinaryExpr:
 		lhs := ev.evalOneOf(e.LHS, ValueTypeScalar, ValueTypeVector)
@@ -776,20 +778,6 @@ func (ev *evaluator) vectorSelector(node *VectorSelector) Vector {
 		}
 		if value.IsStaleNaN(v) {
 			continue
-		}
-		// Find timestamp before this point, within the staleness delta.
-		prevT, _, ok := it.PeekBack(peek)
-		if ok && prevT >= refTime-durationMilliseconds(LookbackDelta) {
-			interval := t - prevT
-			if interval*4+interval/10 < refTime-t {
-				// It is more than 4 (+10% for safety) intervals
-				// since the last data point, skip as stale.
-				//
-				// We need 4 to allow for federation, as with a 10s einterval an eval
-				// started at t=10 could be ingested at t=20, scraped for federation at
-				// t=30 and only ingested by federation at t=40.
-				continue
-			}
 		}
 
 		vec = append(vec, Sample{
@@ -1246,7 +1234,7 @@ type groupedAggregation struct {
 }
 
 // aggregation evaluates an aggregation operation on a Vector.
-func (ev *evaluator) aggregation(op itemType, grouping []string, without bool, keepCommon bool, param Expr, vec Vector) Vector {
+func (ev *evaluator) aggregation(op itemType, grouping []string, without bool, param Expr, vec Vector) Vector {
 
 	result := map[uint64]*groupedAggregation{}
 	var k int64
@@ -1294,9 +1282,7 @@ func (ev *evaluator) aggregation(op itemType, grouping []string, without bool, k
 		if !ok {
 			var m labels.Labels
 
-			if keepCommon {
-				m = lb.Del(labels.MetricName).Labels()
-			} else if without {
+			if without {
 				m = metric
 			} else {
 				m = make(labels.Labels, 0, len(grouping))
@@ -1330,10 +1316,6 @@ func (ev *evaluator) aggregation(op itemType, grouping []string, without bool, k
 				})
 			}
 			continue
-		}
-		// Add the sample to the existing group.
-		if keepCommon {
-			group.labels = intersection(group.labels, s.Metric)
 		}
 
 		switch op {

@@ -62,7 +62,7 @@ func (re *reader) HandlerFunc(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		querier, err := re.store.Querier(from.UnixNano()/int64(time.Millisecond), through.UnixNano()/int64(time.Millisecond))
+		querier, err := re.store.Querier(r.Context(), from.UnixNano()/int64(time.Millisecond), through.UnixNano()/int64(time.Millisecond))
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return

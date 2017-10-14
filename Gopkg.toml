@@ -50,11 +50,11 @@
   name = "github.com/prometheus/common"
 
 [[constraint]]
+  branch = "master"
   name = "github.com/prometheus/prometheus"
-  version = "2.0.0-beta.2"
 
 [[constraint]]
-  revision = "c4ca881685ae1266a75caf57da46d8b6934213c0"
+  revision = "4a7c39d9d8e53151f2137df3b16b7173ce435397"
   name = "github.com/prometheus/tsdb"
 
 [[constraint]]

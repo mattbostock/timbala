@@ -76,7 +76,7 @@ func TestMetrics(t *testing.T) {
 	if !strings.Contains(string(body), "go_info") {
 		t.Fatal("No Go runtime metrics found")
 	}
-	if !strings.Contains(string(body), "tsdb_samples_appended_total") {
+	if !strings.Contains(string(body), "tsdb_head_samples_appended_total") {
 		t.Fatal("No tsdb metrics found")
 	}
 }
