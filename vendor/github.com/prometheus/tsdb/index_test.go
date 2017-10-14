@@ -33,7 +33,7 @@ type series struct {
 }
 
 type mockIndex struct {
-	series     map[uint32]series
+	series     map[uint64]series
 	labelIndex map[string][]string
 	postings   *memPostings
 	symbols    map[string]struct{}
@@ -41,9 +41,9 @@ type mockIndex struct {
 
 func newMockIndex() mockIndex {
 	return mockIndex{
-		series:     make(map[uint32]series),
+		series:     make(map[uint64]series),
 		labelIndex: make(map[string][]string),
-		postings:   &memPostings{m: make(map[term][]uint32)},
+		postings:   newMemPostings(),
 		symbols:    make(map[string]struct{}),
 	}
 }
@@ -52,7 +52,7 @@ func (m mockIndex) Symbols() (map[string]struct{}, error) {
 	return m.symbols, nil
 }
 
-func (m mockIndex) AddSeries(ref uint32, l labels.Labels, chunks ...ChunkMeta) error {
+func (m mockIndex) AddSeries(ref uint64, l labels.Labels, chunks ...ChunkMeta) error {
 	if _, ok := m.series[ref]; ok {
 		return errors.Errorf("series with reference %d already added", ref)
 	}
@@ -84,14 +84,14 @@ func (m mockIndex) WriteLabelIndex(names []string, values []string) error {
 }
 
 func (m mockIndex) WritePostings(name, value string, it Postings) error {
-	if _, ok := m.postings.m[term{name, value}]; ok {
+	if _, ok := m.postings.m[labels.Label{name, value}]; ok {
 		return errors.Errorf("postings for %s=%q already added", name, value)
 	}
 	ep, err := expandPostings(it)
 	if err != nil {
 		return err
 	}
-	m.postings.m[term{name, value}] = ep
+	m.postings.m[labels.Label{name, value}] = ep
 
 	return it.Err()
 }
@@ -110,7 +110,7 @@ func (m mockIndex) LabelValues(names ...string) (StringTuples, error) {
 }
 
 func (m mockIndex) Postings(name, value string) (Postings, error) {
-	return m.postings.get(term{name, value}), nil
+	return m.postings.get(name, value), nil
 }
 
 func (m mockIndex) SortedPostings(p Postings) Postings {
@@ -125,7 +125,7 @@ func (m mockIndex) SortedPostings(p Postings) Postings {
 	return newListPostings(ep)
 }
 
-func (m mockIndex) Series(ref uint32, lset *labels.Labels, chks *[]ChunkMeta) error {
+func (m mockIndex) Series(ref uint64, lset *labels.Labels, chks *[]ChunkMeta) error {
 	s, ok := m.series[ref]
 	if !ok {
 		return ErrNotFound
@@ -202,7 +202,7 @@ func TestIndexRW_Postings(t *testing.T) {
 	require.NoError(t, iw.AddSeries(3, series[2]))
 	require.NoError(t, iw.AddSeries(4, series[3]))
 
-	err = iw.WritePostings("a", "1", newListPostings([]uint32{1, 2, 3, 4}))
+	err = iw.WritePostings("a", "1", newListPostings([]uint64{1, 2, 3, 4}))
 	require.NoError(t, err)
 
 	require.NoError(t, iw.Close())
@@ -221,7 +221,7 @@ func TestIndexRW_Postings(t *testing.T) {
 
 		require.NoError(t, err)
 		require.Equal(t, 0, len(c))
-		require.Equal(t, l, series[i])
+		require.Equal(t, series[i], l)
 	}
 	require.NoError(t, p.Err())
 
@@ -274,16 +274,16 @@ func TestPersistence_index_e2e(t *testing.T) {
 
 	// Population procedure as done by compaction.
 	var (
-		postings = &memPostings{m: make(map[term][]uint32, 512)}
+		postings = newMemPostings()
 		values   = map[string]stringset{}
 	)
 
 	mi := newMockIndex()
 
 	for i, s := range input {
-		err = iw.AddSeries(uint32(i), s.labels, s.chunks...)
+		err = iw.AddSeries(uint64(i), s.labels, s.chunks...)
 		require.NoError(t, err)
-		mi.AddSeries(uint32(i), s.labels, s.chunks...)
+		mi.AddSeries(uint64(i), s.labels, s.chunks...)
 
 		for _, l := range s.labels {
 			valset, ok := values[l.Name]
@@ -292,9 +292,8 @@ func TestPersistence_index_e2e(t *testing.T) {
 				values[l.Name] = valset
 			}
 			valset.set(l.Value)
-
-			postings.add(uint32(i), term{name: l.Name, value: l.Value})
 		}
+		postings.add(uint64(i), s.labels)
 		i++
 	}
 
@@ -305,18 +304,18 @@ func TestPersistence_index_e2e(t *testing.T) {
 		require.NoError(t, mi.WriteLabelIndex([]string{k}, vals))
 	}
 
-	all := make([]uint32, len(lbls))
+	all := make([]uint64, len(lbls))
 	for i := range all {
-		all[i] = uint32(i)
+		all[i] = uint64(i)
 	}
 	err = iw.WritePostings("", "", newListPostings(all))
 	require.NoError(t, err)
 	mi.WritePostings("", "", newListPostings(all))
 
-	for tm := range postings.m {
-		err = iw.WritePostings(tm.name, tm.value, postings.get(tm))
+	for l := range postings.m {
+		err = iw.WritePostings(l.Name, l.Value, postings.get(l.Name, l.Value))
 		require.NoError(t, err)
-		mi.WritePostings(tm.name, tm.value, postings.get(tm))
+		mi.WritePostings(l.Name, l.Value, postings.get(l.Name, l.Value))
 	}
 
 	err = iw.Close()
@@ -326,10 +325,10 @@ func TestPersistence_index_e2e(t *testing.T) {
 	require.NoError(t, err)
 
 	for p := range mi.postings.m {
-		gotp, err := ir.Postings(p.name, p.value)
+		gotp, err := ir.Postings(p.Name, p.Value)
 		require.NoError(t, err)
 
-		expp, err := mi.Postings(p.name, p.value)
+		expp, err := mi.Postings(p.Name, p.Value)
 
 		var lset, explset labels.Labels
 		var chks, expchks []ChunkMeta

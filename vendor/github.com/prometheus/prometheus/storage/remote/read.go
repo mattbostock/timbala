@@ -25,7 +25,7 @@ import (
 )
 
 // Querier returns a new Querier on the storage.
-func (r *Storage) Querier(mint, maxt int64) (storage.Querier, error) {
+func (r *Storage) Querier(_ context.Context, mint, maxt int64) (storage.Querier, error) {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 
@@ -151,11 +151,11 @@ type concreteSeriesSet struct {
 
 func (c *concreteSeriesSet) Next() bool {
 	c.cur++
-	return c.cur < len(c.series)
+	return c.cur-1 < len(c.series)
 }
 
 func (c *concreteSeriesSet) At() storage.Series {
-	return c.series[c.cur]
+	return c.series[c.cur-1]
 }
 
 func (c *concreteSeriesSet) Err() error {

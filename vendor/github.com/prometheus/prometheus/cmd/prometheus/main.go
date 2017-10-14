@@ -17,24 +17,30 @@ package main
 import (
 	"fmt"
 	"net"
+	"net/http"
 	_ "net/http/pprof" // Comment this line to disable pprof endpoint.
 	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
 
-	"github.com/asaskevich/govalidator"
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/version"
 	"golang.org/x/net/context"
 	"gopkg.in/alecthomas/kingpin.v2"
+	k8s_runtime "k8s.io/apimachinery/pkg/util/runtime"
 
+	"github.com/mwitkow/go-conntrack"
+	"github.com/prometheus/common/promlog"
+	promlogflag "github.com/prometheus/common/promlog/flag"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/notifier"
 	"github.com/prometheus/prometheus/promql"
@@ -64,6 +70,11 @@ func init() {
 }
 
 func main() {
+	if os.Getenv("DEBUG") != "" {
+		runtime.SetBlockProfileRate(20)
+		runtime.SetMutexProfileFraction(20)
+	}
+
 	cfg := struct {
 		printVersion bool
 		configFile   string
@@ -80,8 +91,7 @@ func main() {
 
 		prometheusURL string
 
-		logFormat string
-		logLevel  string
+		logLevel promlog.AllowedLevel
 	}{
 		notifier: notifier.Options{
 			Registerer: prometheus.DefaultRegisterer,
@@ -93,14 +103,6 @@ func main() {
 	a.Version(version.Print("prometheus"))
 
 	a.HelpFlag.Short('h')
-
-	a.Flag("log.level",
-		"Only log messages with the given severity or above. One of: [debug, info, warn, error, fatal]").
-		Default("info").StringVar(&cfg.logLevel)
-
-	a.Flag("log.format",
-		`Set the log target and format. Example: "logger:syslog?appname=bob&local=7" or "logger:stdout?json=true"`).
-		Default("logger:stderr").StringVar(&cfg.logFormat)
 
 	a.Flag("config.file", "Prometheus configuration file path.").
 		Default("prometheus.yml").StringVar(&cfg.configFile)
@@ -169,8 +171,11 @@ func main() {
 	a.Flag("query.max-concurrency", "Maximum number of queries executed concurrently.").
 		Default("20").IntVar(&cfg.queryEngine.MaxConcurrentQueries)
 
+	promlogflag.AddFlags(a, &cfg.logLevel)
+
 	_, err := a.Parse(os.Args[1:])
 	if err != nil {
+		fmt.Fprintln(os.Stderr, errors.Wrapf(err, "Error parsing commandline arguments"))
 		a.Usage(os.Args[1:])
 		os.Exit(2)
 	}
@@ -197,40 +202,37 @@ func main() {
 
 	cfg.queryEngine.Timeout = time.Duration(cfg.queryTimeout)
 
-	logger := log.NewLogger(os.Stdout)
-	logger.SetLevel(cfg.logLevel)
-	logger.SetFormat(cfg.logFormat)
+	logger := promlog.New(cfg.logLevel)
 
-	logger.Infoln("Starting prometheus", version.Info())
-	logger.Infoln("Build context", version.BuildContext())
-	logger.Infoln("Host details", Uname())
+	// XXX(fabxc): Kubernetes does background logging which we can only customize by modifying
+	// a global variable.
+	// Ultimately, here is the best place to set it.
+	k8s_runtime.ErrorHandlers = []func(error){
+		func(err error) {
+			level.Error(log.With(logger, "component", "k8s_client_runtime")).Log("err", err)
+		},
+	}
 
-	var (
-		// sampleAppender = storage.Fanout{}
-		reloadables []Reloadable
-	)
+	level.Info(logger).Log("msg", "Starting prometheus", "version", version.Info())
+	level.Info(logger).Log("build_context", version.BuildContext())
+	level.Info(logger).Log("host_details", Uname())
 
 	// Make sure that sighup handler is registered with a redirect to the channel before the potentially
 	// long and synchronous tsdb init.
 	hup := make(chan os.Signal)
 	hupReady := make(chan bool)
 	signal.Notify(hup, syscall.SIGHUP)
-	logger.Infoln("Starting tsdb")
-	localStorage, err := tsdb.Open(cfg.localStoragePath, prometheus.DefaultRegisterer, &cfg.tsdb)
-	if err != nil {
-		log.Errorf("Opening storage failed: %s", err)
-		os.Exit(1)
-	}
-	logger.Infoln("tsdb started")
 
-	remoteStorage := &remote.Storage{}
-	reloadables = append(reloadables, remoteStorage)
-	fanoutStorage := storage.NewFanout(tsdb.Adapter(localStorage), remoteStorage)
-
-	cfg.queryEngine.Logger = logger
 	var (
-		notifier       = notifier.New(&cfg.notifier, logger)
-		targetManager  = retrieval.NewTargetManager(fanoutStorage, logger)
+		localStorage  = &tsdb.ReadyStorage{}
+		remoteStorage = remote.NewStorage(log.With(logger, "component", "remote"))
+		fanoutStorage = storage.NewFanout(logger, localStorage, remoteStorage)
+	)
+
+	cfg.queryEngine.Logger = log.With(logger, "component", "query engine")
+	var (
+		notifier       = notifier.New(&cfg.notifier, log.With(logger, "component", "notifier"))
+		targetManager  = retrieval.NewTargetManager(fanoutStorage, log.With(logger, "component", "target manager"))
 		queryEngine    = promql.NewEngine(fanoutStorage, &cfg.queryEngine)
 		ctx, cancelCtx = context.WithCancel(context.Background())
 	)
@@ -241,11 +243,12 @@ func main() {
 		QueryEngine: queryEngine,
 		Context:     ctx,
 		ExternalURL: cfg.web.ExternalURL,
-		Logger:      logger,
+		Logger:      log.With(logger, "component", "rule manager"),
 	})
 
 	cfg.web.Context = ctx
-	cfg.web.Storage = localStorage
+	cfg.web.TSDB = localStorage.Get
+	cfg.web.Storage = fanoutStorage
 	cfg.web.QueryEngine = queryEngine
 	cfg.web.TargetManager = targetManager
 	cfg.web.RuleManager = ruleManager
@@ -265,13 +268,19 @@ func main() {
 		cfg.web.Flags[f.Name] = f.Value.String()
 	}
 
-	webHandler := web.New(&cfg.web)
+	webHandler := web.New(log.With(logger, "component", "web"), &cfg.web)
 
-	reloadables = append(reloadables, targetManager, ruleManager, webHandler, notifier)
+	// Monitor outgoing connections on default transport with conntrack.
+	http.DefaultTransport.(*http.Transport).DialContext = conntrack.NewDialContextFunc(
+		conntrack.DialWithTracing(),
+	)
 
-	if err := reloadConfig(cfg.configFile, logger, reloadables...); err != nil {
-		logger.Errorf("Error loading config: %s", err)
-		os.Exit(1)
+	reloadables := []Reloadable{
+		remoteStorage,
+		targetManager,
+		ruleManager,
+		webHandler,
+		notifier,
 	}
 
 	// Wait for reload or termination signals. Start the handler for SIGHUP as
@@ -283,11 +292,11 @@ func main() {
 			select {
 			case <-hup:
 				if err := reloadConfig(cfg.configFile, logger, reloadables...); err != nil {
-					logger.Errorf("Error reloading config: %s", err)
+					level.Error(logger).Log("msg", "Error reloading config", "err", err)
 				}
 			case rc := <-webHandler.Reload():
 				if err := reloadConfig(cfg.configFile, logger, reloadables...); err != nil {
-					logger.Errorf("Error reloading config: %s", err)
+					level.Error(logger).Log("msg", "Error reloading config", "err", err)
 					rc <- err
 				} else {
 					rc <- nil
@@ -296,14 +305,29 @@ func main() {
 		}
 	}()
 
-	// Start all components. The order is NOT arbitrary.
-	defer func() {
-		if err := fanoutStorage.Close(); err != nil {
-			log.Errorln("Error stopping storage:", err)
-		}
-	}()
+	// Start all components while we wait for TSDB to open but only load
+	// initial config and mark ourselves as ready after it completed.
+	dbOpen := make(chan struct{})
 
-	// defer remoteStorage.Stop()
+	go func() {
+		defer close(dbOpen)
+
+		level.Info(logger).Log("msg", "Starting TSDB")
+
+		db, err := tsdb.Open(
+			cfg.localStoragePath,
+			log.With(logger, "component", "tsdb"),
+			prometheus.DefaultRegisterer,
+			&cfg.tsdb,
+		)
+		if err != nil {
+			level.Error(logger).Log("msg", "Opening storage failed", "err", err)
+			os.Exit(1)
+		}
+		level.Info(logger).Log("msg", "TSDB started")
+
+		localStorage.Set(db)
+	}()
 
 	prometheus.MustRegister(configSuccess)
 	prometheus.MustRegister(configSuccessTime)
@@ -326,25 +350,38 @@ func main() {
 	errc := make(chan error)
 	go func() { errc <- webHandler.Run(ctx) }()
 
+	<-dbOpen
+
+	if err := reloadConfig(cfg.configFile, logger, reloadables...); err != nil {
+		level.Error(logger).Log("msg", "Error loading config", "err", err)
+		os.Exit(1)
+	}
+
+	defer func() {
+		if err := fanoutStorage.Close(); err != nil {
+			level.Error(logger).Log("msg", "Error stopping storage", "err", err)
+		}
+	}()
+
 	// Wait for reload or termination signals.
 	close(hupReady) // Unblock SIGHUP handler.
 
 	// Set web server to ready.
 	webHandler.Ready()
-	log.Info("Server is Ready to receive requests.")
+	level.Info(logger).Log("msg", "Server is ready to receive requests.")
 
-	term := make(chan os.Signal)
+	term := make(chan os.Signal, 1)
 	signal.Notify(term, os.Interrupt, syscall.SIGTERM)
 	select {
 	case <-term:
-		logger.Warn("Received SIGTERM, exiting gracefully...")
+		level.Warn(logger).Log("msg", "Received SIGTERM, exiting gracefully...")
 	case <-webHandler.Quit():
-		logger.Warn("Received termination request via web service, exiting gracefully...")
+		level.Warn(logger).Log("msg", "Received termination request via web service, exiting gracefully...")
 	case err := <-errc:
-		logger.Errorln("Error starting web server, exiting gracefully:", err)
+		level.Error(logger).Log("msg", "Error starting web server, exiting gracefully", "err", err)
 	}
 
-	logger.Info("See you next time!")
+	level.Info(logger).Log("msg", "See you next time!")
 }
 
 // Reloadable things can change their internal state to match a new config
@@ -354,7 +391,8 @@ type Reloadable interface {
 }
 
 func reloadConfig(filename string, logger log.Logger, rls ...Reloadable) (err error) {
-	logger.Infof("Loading configuration file %s", filename)
+	level.Info(logger).Log("msg", "Loading configuration file", "filename", filename)
+
 	defer func() {
 		if err == nil {
 			configSuccess.Set(1)
@@ -372,7 +410,7 @@ func reloadConfig(filename string, logger log.Logger, rls ...Reloadable) (err er
 	failed := false
 	for _, rl := range rls {
 		if err := rl.ApplyConfig(conf); err != nil {
-			logger.Error("Failed to apply configuration: ", err)
+			level.Error(logger).Log("msg", "Failed to apply configuration", "err", err)
 			failed = true
 		}
 	}
@@ -380,6 +418,11 @@ func reloadConfig(filename string, logger log.Logger, rls ...Reloadable) (err er
 		return fmt.Errorf("one or more errors occurred while applying the new configuration (--config.file=%s)", filename)
 	}
 	return nil
+}
+
+func startsOrEndsWithQuote(s string) bool {
+	return strings.HasPrefix(s, "\"") || strings.HasPrefix(s, "'") ||
+		strings.HasSuffix(s, "\"") || strings.HasSuffix(s, "'")
 }
 
 // computeExternalURL computes a sanitized external URL from a raw input. It infers unset
@@ -397,8 +440,8 @@ func computeExternalURL(u, listenAddr string) (*url.URL, error) {
 		u = fmt.Sprintf("http://%s:%s/", hostname, port)
 	}
 
-	if ok := govalidator.IsURL(u); !ok {
-		return nil, fmt.Errorf("invalid external URL %q", u)
+	if startsOrEndsWithQuote(u) {
+		return nil, fmt.Errorf("URL must not begin or end with quotes")
 	}
 
 	eu, err := url.Parse(u)

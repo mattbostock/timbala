@@ -38,24 +38,6 @@
   version = "v1.0.0"
 
 [[projects]]
-  name = "github.com/coreos/etcd"
-  packages = ["pkg/fileutil"]
-  revision = "bb66589f8cf18960c7f3d56b1b83753caeed9c7a"
-  version = "v3.2.7"
-
-[[projects]]
-  name = "github.com/coreos/go-systemd"
-  packages = ["journal"]
-  revision = "d2196463941895ee908e13531a23a39feb9e1243"
-  version = "v15"
-
-[[projects]]
-  name = "github.com/coreos/pkg"
-  packages = ["capnslog"]
-  revision = "3ac0863d7acf3bc44daf49afef8919af12f704ef"
-  version = "v3"
-
-[[projects]]
   branch = "master"
   name = "github.com/dgryski/go-bits"
   packages = ["."]
@@ -75,7 +57,7 @@
 
 [[projects]]
   name = "github.com/go-kit/kit"
-  packages = ["log"]
+  packages = ["log","log/level"]
   revision = "a9ca6725cbbea455e61c6bc8a1ed28e81eb3493b"
   version = "v0.5.0"
 
@@ -195,6 +177,12 @@
 
 [[projects]]
   branch = "master"
+  name = "github.com/mwitkow/go-conntrack"
+  packages = ["."]
+  revision = "cc309e4a22231782e8893f3c35ced0967807a33e"
+
+[[projects]]
+  branch = "master"
   name = "github.com/nightlyone/lockfile"
   packages = ["."]
   revision = "6a197d5ea61168f2ac821de2b7f011b250904900"
@@ -232,7 +220,7 @@
 [[projects]]
   branch = "master"
   name = "github.com/prometheus/common"
-  packages = ["expfmt","internal/bitbucket.org/ww/goautoneg","log","model","route"]
+  packages = ["expfmt","internal/bitbucket.org/ww/goautoneg","model","route"]
   revision = "bc8b88226a1210b016e9993b1d75f858c9c8f778"
 
 [[projects]]
@@ -242,15 +230,15 @@
   revision = "e645f4e5aaa8506fc71d6edbc5c4ff02c04c46f2"
 
 [[projects]]
+  branch = "master"
   name = "github.com/prometheus/prometheus"
   packages = ["config","pkg/labels","pkg/textparse","pkg/timestamp","pkg/value","prompb","promql","storage","storage/tsdb","util/httputil","util/stats","util/strutil","util/testutil"]
-  revision = "a52f082939a566d5269671e98be06fc6bdf61d09"
-  version = "v2.0.0-beta.2"
+  revision = "e948721a0b269707a6e89e0c513eb434a7b66c8a"
 
 [[projects]]
   name = "github.com/prometheus/tsdb"
-  packages = [".","chunks","labels"]
-  revision = "c4ca881685ae1266a75caf57da46d8b6934213c0"
+  packages = [".","chunks","fileutil","labels"]
+  revision = "4a7c39d9d8e53151f2137df3b16b7173ce435397"
 
 [[projects]]
   name = "github.com/retailnext/hllpp"
@@ -291,7 +279,7 @@
 [[projects]]
   branch = "master"
   name = "golang.org/x/sys"
-  packages = ["unix","windows","windows/registry","windows/svc/eventlog"]
+  packages = ["unix","windows"]
   revision = "7ddbeae9ae08c6a06a59597f0c9edbc5ff2444ce"
 
 [[projects]]
@@ -327,6 +315,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "be2cd0f8884f06f14e88028a2089146c62f331a571894392dd944129cc78683d"
+  inputs-digest = "b1c5e504b8337a5314da410ec2fcf7155b385da807223913bde36a0e5a62ca19"
   solver-name = "gps-cdcl"
   solver-version = 1

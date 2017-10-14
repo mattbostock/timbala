@@ -18,16 +18,14 @@ import (
 	"encoding/binary"
 	"fmt"
 	"hash"
-	"hash/crc32"
 	"io"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
-
 	"math"
 
-	"github.com/coreos/etcd/pkg/fileutil"
+	"github.com/prometheus/tsdb/fileutil"
 	"github.com/pkg/errors"
 	"github.com/prometheus/tsdb/labels"
 )
@@ -100,7 +98,7 @@ type IndexWriter interface {
 	// their labels.
 	// The reference numbers are used to resolve entries in postings lists that
 	// are added later.
-	AddSeries(ref uint32, l labels.Labels, chunks ...ChunkMeta) error
+	AddSeries(ref uint64, l labels.Labels, chunks ...ChunkMeta) error
 
 	// WriteLabelIndex serializes an index from label names to values.
 	// The passed in values chained tuples of strings of the length of names.
@@ -131,7 +129,7 @@ type indexWriter struct {
 	uint32s []uint32
 
 	symbols       map[string]uint32 // symbol offsets
-	seriesOffsets map[uint32]uint64 // offsets of series
+	seriesOffsets map[uint64]uint64 // offsets of series
 	labelIndexes  []hashEntry       // label index offsets
 	postings      []hashEntry       // postings lists offsets
 
@@ -176,8 +174,8 @@ func newIndexWriter(dir string) (*indexWriter, error) {
 
 		// Caches.
 		symbols:       make(map[string]uint32, 1<<13),
-		seriesOffsets: make(map[uint32]uint64, 1<<16),
-		crc32:         crc32.New(crc32.MakeTable(crc32.Castagnoli)),
+		seriesOffsets: make(map[uint64]uint64, 1<<16),
+		crc32:         newCRC32(),
 	}
 	if err := iw.writeMeta(); err != nil {
 		return nil, err
@@ -233,13 +231,13 @@ func (w *indexWriter) ensureStage(s indexWriterStage) error {
 		w.toc.labelIndices = w.pos
 
 	case idxStagePostings:
+		w.toc.postings = w.pos
+
+	case idxStageDone:
 		w.toc.labelIndicesTable = w.pos
 		if err := w.writeOffsetTable(w.labelIndexes); err != nil {
 			return err
 		}
-		w.toc.postings = w.pos
-
-	case idxStageDone:
 		w.toc.postingsTable = w.pos
 		if err := w.writeOffsetTable(w.postings); err != nil {
 			return err
@@ -261,7 +259,7 @@ func (w *indexWriter) writeMeta() error {
 	return w.write(w.buf1.get())
 }
 
-func (w *indexWriter) AddSeries(ref uint32, lset labels.Labels, chunks ...ChunkMeta) error {
+func (w *indexWriter) AddSeries(ref uint64, lset labels.Labels, chunks ...ChunkMeta) error {
 	if err := w.ensureStage(idxStageSeries); err != nil {
 		return err
 	}
@@ -293,10 +291,22 @@ func (w *indexWriter) AddSeries(ref uint32, lset labels.Labels, chunks ...ChunkM
 
 	w.buf2.putUvarint(len(chunks))
 
-	for _, c := range chunks {
+	if len(chunks) > 0 {
+		c := chunks[0]
 		w.buf2.putVarint64(c.MinTime)
-		w.buf2.putVarint64(c.MaxTime)
+		w.buf2.putUvarint64(uint64(c.MaxTime - c.MinTime))
 		w.buf2.putUvarint64(c.Ref)
+		t0 := c.MaxTime
+		ref0 := int64(c.Ref)
+
+		for _, c := range chunks[1:] {
+			w.buf2.putUvarint64(uint64(c.MinTime - t0))
+			w.buf2.putUvarint64(uint64(c.MaxTime - c.MinTime))
+			t0 = c.MaxTime
+
+			w.buf2.putVarint64(int64(c.Ref) - ref0)
+			ref0 = int64(c.Ref)
+		}
 	}
 
 	w.buf1.reset()
@@ -336,10 +346,6 @@ func (w *indexWriter) AddSymbols(sym map[string]struct{}) error {
 
 	for _, s := range symbols {
 		w.symbols[s] = uint32(w.pos) + headerSize + uint32(w.buf2.len())
-
-		// NOTE: len(s) gives the number of runes, not the number of bytes.
-		// Therefore the read-back length for strings with unicode characters will
-		// be off when not using putUvarintStr.
 		w.buf2.putUvarintStr(s)
 	}
 
@@ -397,10 +403,8 @@ func (w *indexWriter) WriteLabelIndex(names []string, values []string) error {
 
 // writeOffsetTable writes a sequence of readable hash entries.
 func (w *indexWriter) writeOffsetTable(entries []hashEntry) error {
-	w.buf1.reset()
-	w.buf1.putBE32int(len(entries))
-
 	w.buf2.reset()
+	w.buf2.putBE32int(len(entries))
 
 	for _, e := range entries {
 		w.buf2.putUvarint(len(e.keys))
@@ -410,6 +414,7 @@ func (w *indexWriter) writeOffsetTable(entries []hashEntry) error {
 		w.buf2.putUvarint64(e.offset)
 	}
 
+	w.buf1.reset()
 	w.buf1.putBE32int(w.buf2.len())
 	w.buf2.putHash(w.crc32)
 
@@ -458,7 +463,10 @@ func (w *indexWriter) WritePostings(name, value string, it Postings) error {
 		if !ok {
 			return errors.Errorf("%p series for reference %d not found", w, it.At())
 		}
-		refs = append(refs, uint32(offset)) // XXX(fabxc): get uint64 vs uint32 sorted out.
+		if offset > (1<<32)-1 {
+			return errors.Errorf("series offset %d exceeds 4 bytes", offset)
+		}
+		refs = append(refs, uint32(offset))
 	}
 	if err := it.Err(); err != nil {
 		return err
@@ -525,7 +533,7 @@ type IndexReader interface {
 
 	// Series populates the given labels and chunk metas for the series identified
 	// by the reference.
-	Series(ref uint32, lset *labels.Labels, chks *[]ChunkMeta) error
+	Series(ref uint64, lset *labels.Labels, chks *[]ChunkMeta) error
 
 	// LabelIndices returns the label pairs for which indices exist.
 	LabelIndices() ([][]string, error)
@@ -553,6 +561,12 @@ type indexReader struct {
 	// Cached hashmaps of section offsets.
 	labels   map[string]uint32
 	postings map[string]uint32
+	// Cache of read symbols. Strings that are returned when reading from the
+	// block are always backed by true strings held in here rather than
+	// strings that are backed by byte slices from the mmap'd index file. This
+	// prevents memory faults when applications work with read symbols after
+	// the block has been unmapped.
+	symbols map[uint32]string
 }
 
 var (
@@ -560,13 +574,20 @@ var (
 	errInvalidFlag = fmt.Errorf("invalid flag")
 )
 
+// NewIndexReader returns a new IndexReader on the given directory.
+func NewIndexReader(dir string) (IndexReader, error) { return newIndexReader(dir) }
+
 // newIndexReader returns a new indexReader on the given directory.
 func newIndexReader(dir string) (*indexReader, error) {
 	f, err := openMmapFile(filepath.Join(dir, "index"))
 	if err != nil {
 		return nil, err
 	}
-	r := &indexReader{b: f.b, c: f}
+	r := &indexReader{
+		b:       f.b,
+		c:       f,
+		symbols: map[uint32]string{},
+	}
 
 	// Verify magic number.
 	if len(f.b) < 4 {
@@ -578,6 +599,9 @@ func newIndexReader(dir string) (*indexReader, error) {
 
 	if err := r.readTOC(); err != nil {
 		return nil, errors.Wrap(err, "read TOC")
+	}
+	if err := r.readSymbols(int(r.toc.symbols)); err != nil {
+		return nil, errors.Wrap(err, "read symbols")
 	}
 
 	r.labels, err = r.readOffsetTable(r.toc.labelIndicesTable)
@@ -610,21 +634,40 @@ func (r *indexReader) decbufAt(off int) decbuf {
 	return decbuf{b: r.b[off:]}
 }
 
+// readSymbols reads the symbol table fully into memory and allocates proper strings for them.
+// Strings backed by the mmap'd memory would cause memory faults if applications keep using them
+// after the reader is closed.
+func (r *indexReader) readSymbols(off int) error {
+	if off == 0 {
+		return nil
+	}
+	var (
+		d1      = r.decbufAt(int(off))
+		d2      = d1.decbuf(d1.be32int())
+		origLen = d2.len()
+		cnt     = d2.be32int()
+		basePos = uint32(off) + 4
+		nextPos = basePos + uint32(origLen-d2.len())
+	)
+	for d2.err() == nil && d2.len() > 0 && cnt > 0 {
+		s := d2.uvarintStr()
+		r.symbols[uint32(nextPos)] = s
+
+		nextPos = basePos + uint32(origLen-d2.len())
+		cnt--
+	}
+	return d2.err()
+}
+
 // readOffsetTable reads an offset table at the given position and returns a map
 // with the key strings concatenated by the 0xff unicode non-character.
 func (r *indexReader) readOffsetTable(off uint64) (map[string]uint32, error) {
-	// A table might not have been written at all, in which case the position
-	// is zeroed out.
-	if off == 0 {
-		return nil, nil
-	}
-
 	const sep = "\xff"
 
 	var (
 		d1  = r.decbufAt(int(off))
-		cnt = d1.be32()
 		d2  = d1.decbuf(d1.be32int())
+		cnt = d2.be32()
 	)
 
 	res := make(map[string]uint32, 512)
@@ -669,28 +712,20 @@ func (r *indexReader) section(o uint32) (byte, []byte, error) {
 }
 
 func (r *indexReader) lookupSymbol(o uint32) (string, error) {
-	d := r.decbufAt(int(o))
-
-	s := d.uvarintStr()
-	if d.err() != nil {
-		return "", errors.Wrapf(d.err(), "read symbol at %d", o)
+	s, ok := r.symbols[o]
+	if !ok {
+		return "", errors.Errorf("unknown symbol offset %d", o)
 	}
 	return s, nil
 }
 
 func (r *indexReader) Symbols() (map[string]struct{}, error) {
-	d1 := r.decbufAt(int(r.toc.symbols))
-	d2 := d1.decbuf(d1.be32int())
+	res := make(map[string]struct{}, len(r.symbols))
 
-	count := d2.be32int()
-	sym := make(map[string]struct{}, count)
-
-	for ; count > 0; count-- {
-		s := d2.uvarintStr()
-		sym[s] = struct{}{}
+	for _, s := range r.symbols {
+		res[s] = struct{}{}
 	}
-
-	return sym, d2.err()
+	return res, nil
 }
 
 func (r *indexReader) LabelValues(names ...string) (StringTuples, error) {
@@ -741,7 +776,7 @@ func (r *indexReader) LabelIndices() ([][]string, error) {
 	return res, nil
 }
 
-func (r *indexReader) Series(ref uint32, lbls *labels.Labels, chks *[]ChunkMeta) error {
+func (r *indexReader) Series(ref uint64, lbls *labels.Labels, chks *[]ChunkMeta) error {
 	d1 := r.decbufAt(int(ref))
 	d2 := d1.decbuf(int(d1.uvarint()))
 
@@ -773,17 +808,34 @@ func (r *indexReader) Series(ref uint32, lbls *labels.Labels, chks *[]ChunkMeta)
 	// Read the chunks meta data.
 	k = int(d2.uvarint())
 
-	for i := 0; i < k; i++ {
-		mint := d2.varint64()
-		maxt := d2.varint64()
-		off := d2.uvarint64()
+	if k == 0 {
+		return nil
+	}
+
+	t0 := d2.varint64()
+	maxt := int64(d2.uvarint64()) + t0
+	ref0 := int64(d2.uvarint64())
+
+	*chks = append(*chks, ChunkMeta{
+		Ref:     uint64(ref0),
+		MinTime: t0,
+		MaxTime: maxt,
+	})
+	t0 = maxt
+
+	for i := 1; i < k; i++ {
+		mint := int64(d2.uvarint64()) + t0
+		maxt := int64(d2.uvarint64()) + mint
+
+		ref0 += d2.varint64()
+		t0 = maxt
 
 		if d2.err() != nil {
 			return errors.Wrapf(d2.err(), "read meta for chunk %d", i)
 		}
 
 		*chks = append(*chks, ChunkMeta{
-			Ref:     off,
+			Ref:     uint64(ref0),
 			MinTime: mint,
 			MaxTime: maxt,
 		})

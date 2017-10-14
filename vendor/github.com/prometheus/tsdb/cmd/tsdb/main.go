@@ -18,8 +18,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"net/http"
-	_ "net/http/pprof"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -28,46 +26,42 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/go-kit/kit/log"
 	"github.com/pkg/errors"
 	promlabels "github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/textparse"
 	"github.com/prometheus/tsdb"
 	"github.com/prometheus/tsdb/labels"
-	"github.com/spf13/cobra"
+	"gopkg.in/alecthomas/kingpin.v2"
 )
 
 func main() {
-	// Start HTTP server for pprof endpoint.
-	go http.ListenAndServe(":9999", nil)
-
-	root := &cobra.Command{
-		Use:   "tsdb",
-		Short: "CLI tool for tsdb",
-	}
-
-	root.AddCommand(
-		NewBenchCommand(),
+	var (
+		cli                  = kingpin.New(filepath.Base(os.Args[0]), "CLI tool for tsdb")
+		benchCmd             = cli.Command("bench", "run benchmarks")
+		benchWriteCmd        = benchCmd.Command("write", "run a write performance benchmark")
+		benchWriteOutPath    = benchWriteCmd.Flag("out", "set the output path").Default("benchout/").String()
+		benchWriteNumMetrics = benchWriteCmd.Flag("metrics", "number of metrics to read").Default("10000").Int()
+		benchSamplesFile     = benchWriteCmd.Arg("file", "input file with samples data, default is (../../testdata/20k.series)").Default("../../testdata/20k.series").String()
 	)
 
-	flag.CommandLine.Set("log.level", "debug")
-
-	root.Execute()
-}
-
-func NewBenchCommand() *cobra.Command {
-	c := &cobra.Command{
-		Use:   "bench",
-		Short: "run benchmarks",
+	switch kingpin.MustParse(cli.Parse(os.Args[1:])) {
+	case benchWriteCmd.FullCommand():
+		wb := &writeBenchmark{
+			outPath:     *benchWriteOutPath,
+			numMetrics:  *benchWriteNumMetrics,
+			samplesFile: *benchSamplesFile,
+		}
+		wb.run()
 	}
-	c.AddCommand(NewBenchWriteCommand())
-
-	return c
+	flag.CommandLine.Set("log.level", "debug")
 }
 
 type writeBenchmark struct {
-	outPath    string
-	cleanup    bool
-	numMetrics int
+	outPath     string
+	samplesFile string
+	cleanup     bool
+	numMetrics  int
 
 	storage *tsdb.DB
 
@@ -77,22 +71,7 @@ type writeBenchmark struct {
 	mtxprof   *os.File
 }
 
-func NewBenchWriteCommand() *cobra.Command {
-	var wb writeBenchmark
-	c := &cobra.Command{
-		Use:   "write <file>",
-		Short: "run a write performance benchmark",
-		Run:   wb.run,
-	}
-	c.PersistentFlags().StringVar(&wb.outPath, "out", "benchout/", "set the output path")
-	c.PersistentFlags().IntVar(&wb.numMetrics, "metrics", 10000, "number of metrics to read")
-	return c
-}
-
-func (b *writeBenchmark) run(cmd *cobra.Command, args []string) {
-	if len(args) != 1 {
-		exitWithError(fmt.Errorf("missing file argument"))
-	}
+func (b *writeBenchmark) run() {
 	if b.outPath == "" {
 		dir, err := ioutil.TempDir("", "tsdb_bench")
 		if err != nil {
@@ -110,7 +89,10 @@ func (b *writeBenchmark) run(cmd *cobra.Command, args []string) {
 
 	dir := filepath.Join(b.outPath, "storage")
 
-	st, err := tsdb.Open(dir, nil, nil, &tsdb.Options{
+	l := log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
+	l = log.With(l, "ts", log.DefaultTimestampUTC, "caller", log.DefaultCaller)
+
+	st, err := tsdb.Open(dir, l, nil, &tsdb.Options{
 		WALFlushInterval:  200 * time.Millisecond,
 		RetentionDuration: 15 * 24 * 60 * 60 * 1000, // 15 days in milliseconds
 		BlockRanges:       tsdb.ExponentialBlockRanges(2*60*60*1000, 5, 3),
@@ -123,7 +105,7 @@ func (b *writeBenchmark) run(cmd *cobra.Command, args []string) {
 	var metrics []labels.Labels
 
 	measureTime("readData", func() {
-		f, err := os.Open(args[0])
+		f, err := os.Open(b.samplesFile)
 		if err != nil {
 			exitWithError(err)
 		}
@@ -139,7 +121,7 @@ func (b *writeBenchmark) run(cmd *cobra.Command, args []string) {
 
 	dur := measureTime("ingestScrapes", func() {
 		b.startProfiling()
-		total, err = b.ingestScrapes(metrics, 3000)
+		total, err = b.ingestScrapes(metrics, 2000)
 		if err != nil {
 			exitWithError(err)
 		}
@@ -199,7 +181,7 @@ func (b *writeBenchmark) ingestScrapesShard(metrics []labels.Labels, scrapeCount
 	type sample struct {
 		labels labels.Labels
 		value  int64
-		ref    *string
+		ref    *uint64
 	}
 
 	scrape := make([]*sample, 0, len(metrics))

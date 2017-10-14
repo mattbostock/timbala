@@ -1,13 +1,59 @@
-## v2.0.0-beta.2 / 2017-08-18
+## 1.8.0 / 2017-10-06
+
+* [CHANGE] Rule links link to the _Console_ tab rather than the _Graph_ tab to
+  not trigger expensive range queries by default.
+* [FEATURE] Ability to act as a remote read endpoint for other Prometheus
+  servers.
+* [FEATURE] K8s SD: Support discovery of ingresses.
+* [FEATURE] Consul SD: Support for node metadata.
+* [FEATURE] Openstack SD: Support discovery of hypervisors.
+* [FEATURE] Expose current Prometheus config via `/status/config`.
+* [FEATURE] Allow to collapse jobs on `/targets` page.
+* [FEATURE] Add `/-/healthy` and `/-/ready` endpoints.
+* [FEATURE] Add color scheme support to console templates.
+* [ENHANCEMENT] Remote storage connections use HTTP keep-alive.
+* [ENHANCEMENT] Improved logging about remote storage.
+* [ENHANCEMENT] Relaxed URL validation.
+* [ENHANCEMENT] Openstack SD: Handle instances without IP.
+* [ENHANCEMENT] Make remote storage queue manager configurable.
+* [ENHANCEMENT] Validate metrics returned from remote read.
+* [ENHANCEMENT] EC2 SD: Set a default region.
+* [ENHANCEMENT] Changed help link to `https://prometheus.io/docs`.
+* [BUGFIX] Fix floating-point precision issue in `deriv` function.
+* [BUGFIX] Fix pprof endpoints when -web.route-prefix or -web.external-url is
+  used.
+* [BUGFIX] Fix handling of `null` target groups in file-based SD.
+* [BUGFIX] Set the sample timestamp in date-related PromQL functions.
+* [BUGFIX] Apply path prefix to redirect from deprecated graph URL.
+* [BUGFIX] Fixed tests on MS Windows.
+* [BUGFIX] Check for invalid UTF-8 in label values after relabeling.
+
+## v2.0.0-rc.0 / 2017-10-05
 
 This release includes numerous changes to the new storage layer. The main changes are:
 
-* [CHANGES] Deterministic block boundaries
-* [ENHANCEMENTS] Avoid memory usage spikes during compactions
+* [CHANGE] Remove `count_scalar`, `keep_common` and `drop_common_labels` functions
+* [CHANGE] Breaking change in the index format for better consistency 
+* [BUGFIX] Fix panic due garbage collected mmap'ed strings 
+* [BUGFIX] Fix broken snapshots and admin APIs 
+* [BUGFIX] Send HTTP Accept header when scraping
+* [BUGFIX] Use the WAL flush interval passed instead of the hardcoded value
 
-It's generally advised to start with a clean storage directory. As a best effort,
-running `sed -i .bkp 's/generation/level/g' */meta.json` from within the directory
-should be sufficient to migrate data written by v2.0.0-beta.0.
+This release requires a clean storage directory and is not compatible with files
+created by previous beta releases.
+
+## 1.7.2 / 2017-09-26
+
+* [BUGFIX] Correctly remove all targets from DNS service discovery if the
+  corresponding DNS query succeeds and returns an empty result.
+* [BUGFIX] Correctly parse resolution input in expression browser.
+* [BUGFIX] Consistently use UTC in the date picker of the expression browser.
+* [BUGFIX] Correctly handle multiple ports in Marathon service discovery.
+* [BUGFIX] Fix HTML escaping so that HTML templates compile with Go1.9.
+* [BUGFIX] Prevent number of remote write shards from going negative.
+* [BUGFIX] In the graphs created by the expression browser, render very large
+  and small numbers in a readable way.
+* [BUGFIX] Fix a rarely occurring iterator issue in varbit encoded chunks.
 
 ## 1.7.1 / 2017-06-12
 

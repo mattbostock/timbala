@@ -14,14 +14,13 @@
 package promql
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"testing"
 	"time"
 
-	"golang.org/x/net/context"
-
-	"github.com/prometheus/common/log"
+	"github.com/go-kit/kit/log"
 	"github.com/prometheus/prometheus/pkg/labels"
 )
 
@@ -296,9 +295,8 @@ load 10s
 }
 
 func TestRecoverEvaluatorRuntime(t *testing.T) {
-	ev := &evaluator{
-		logger: log.Base(),
-	}
+	ev := &evaluator{logger: log.NewNopLogger()}
+
 	var err error
 	defer ev.recover(&err)
 
@@ -312,7 +310,7 @@ func TestRecoverEvaluatorRuntime(t *testing.T) {
 }
 
 func TestRecoverEvaluatorError(t *testing.T) {
-	ev := &evaluator{logger: log.Base()}
+	ev := &evaluator{logger: log.NewNopLogger()}
 	var err error
 
 	e := fmt.Errorf("custom error")

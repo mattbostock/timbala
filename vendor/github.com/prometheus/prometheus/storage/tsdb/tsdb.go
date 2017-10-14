@@ -14,9 +14,12 @@
 package tsdb
 
 import (
+	"context"
+	"sync"
 	"time"
 	"unsafe"
 
+	"github.com/go-kit/kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -25,6 +28,63 @@ import (
 	"github.com/prometheus/tsdb"
 	tsdbLabels "github.com/prometheus/tsdb/labels"
 )
+
+// ErrNotReady is returned if the underlying storage is not ready yet.
+var ErrNotReady = errors.New("TSDB not ready")
+
+// ReadyStorage implements the Storage interface while allowing to set the actual
+// storage at a later point in time.
+type ReadyStorage struct {
+	mtx sync.RWMutex
+	a   *adapter
+}
+
+// Set the storage.
+func (s *ReadyStorage) Set(db *tsdb.DB) {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
+	s.a = &adapter{db: db}
+}
+
+// Get the storage.
+func (s *ReadyStorage) Get() *tsdb.DB {
+	if x := s.get(); x != nil {
+		return x.db
+	}
+	return nil
+}
+
+func (s *ReadyStorage) get() *adapter {
+	s.mtx.RLock()
+	x := s.a
+	s.mtx.RUnlock()
+	return x
+}
+
+// Querier implements the Storage interface.
+func (s *ReadyStorage) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
+	if x := s.get(); x != nil {
+		return x.Querier(ctx, mint, maxt)
+	}
+	return nil, ErrNotReady
+}
+
+// Appender implements the Storage interface.
+func (s *ReadyStorage) Appender() (storage.Appender, error) {
+	if x := s.get(); x != nil {
+		return x.Appender()
+	}
+	return nil, ErrNotReady
+}
+
+// Close implements the Storage interface.
+func (s *ReadyStorage) Close() error {
+	if x := s.Get(); x != nil {
+		return x.Close()
+	}
+	return nil
+}
 
 func Adapter(db *tsdb.DB) storage.Storage {
 	return &adapter{db: db}
@@ -55,10 +115,10 @@ type Options struct {
 }
 
 // Open returns a new storage backed by a TSDB database that is configured for Prometheus.
-func Open(path string, r prometheus.Registerer, opts *Options) (*tsdb.DB, error) {
+func Open(path string, l log.Logger, r prometheus.Registerer, opts *Options) (*tsdb.DB, error) {
 	// Start with smallest block duration and create exponential buckets until the exceed the
 	// configured maximum block duration.
-	rngs := tsdb.ExponentialBlockRanges(int64(time.Duration(opts.MinBlockDuration).Seconds()*1000), 3, 10)
+	rngs := tsdb.ExponentialBlockRanges(int64(time.Duration(opts.MinBlockDuration).Seconds()*1000), 10, 3)
 
 	for i, v := range rngs {
 		if v > int64(time.Duration(opts.MaxBlockDuration).Seconds()*1000) {
@@ -67,7 +127,7 @@ func Open(path string, r prometheus.Registerer, opts *Options) (*tsdb.DB, error)
 		}
 	}
 
-	db, err := tsdb.Open(path, nil, r, &tsdb.Options{
+	db, err := tsdb.Open(path, l, r, &tsdb.Options{
 		WALFlushInterval:  10 * time.Second,
 		RetentionDuration: uint64(time.Duration(opts.Retention).Seconds() * 1000),
 		BlockRanges:       rngs,
@@ -79,7 +139,7 @@ func Open(path string, r prometheus.Registerer, opts *Options) (*tsdb.DB, error)
 	return db, nil
 }
 
-func (a adapter) Querier(mint, maxt int64) (storage.Querier, error) {
+func (a adapter) Querier(_ context.Context, mint, maxt int64) (storage.Querier, error) {
 	return querier{q: a.db.Querier(mint, maxt)}, nil
 }
 
@@ -129,23 +189,23 @@ type appender struct {
 	a tsdb.Appender
 }
 
-func (a appender) Add(lset labels.Labels, t int64, v float64) (string, error) {
+func (a appender) Add(lset labels.Labels, t int64, v float64) (uint64, error) {
 	ref, err := a.a.Add(toTSDBLabels(lset), t, v)
 
 	switch errors.Cause(err) {
 	case tsdb.ErrNotFound:
-		return "", storage.ErrNotFound
+		return 0, storage.ErrNotFound
 	case tsdb.ErrOutOfOrderSample:
-		return "", storage.ErrOutOfOrderSample
+		return 0, storage.ErrOutOfOrderSample
 	case tsdb.ErrAmendSample:
-		return "", storage.ErrDuplicateSampleForTimestamp
+		return 0, storage.ErrDuplicateSampleForTimestamp
 	case tsdb.ErrOutOfBounds:
-		return "", storage.ErrOutOfBounds
+		return 0, storage.ErrOutOfBounds
 	}
 	return ref, err
 }
 
-func (a appender) AddFast(_ labels.Labels, ref string, t int64, v float64) error {
+func (a appender) AddFast(_ labels.Labels, ref uint64, t int64, v float64) error {
 	err := a.a.AddFast(ref, t, v)
 
 	switch errors.Cause(err) {
@@ -173,14 +233,14 @@ func convertMatcher(m *labels.Matcher) tsdbLabels.Matcher {
 		return tsdbLabels.Not(tsdbLabels.NewEqualMatcher(m.Name, m.Value))
 
 	case labels.MatchRegexp:
-		res, err := tsdbLabels.NewRegexpMatcher(m.Name, m.Value)
+		res, err := tsdbLabels.NewRegexpMatcher(m.Name, "^(?:"+m.Value+")$")
 		if err != nil {
 			panic(err)
 		}
 		return res
 
 	case labels.MatchNotRegexp:
-		res, err := tsdbLabels.NewRegexpMatcher(m.Name, m.Value)
+		res, err := tsdbLabels.NewRegexpMatcher(m.Name, "^(?:"+m.Value+")$")
 		if err != nil {
 			panic(err)
 		}
