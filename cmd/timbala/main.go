@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	stdlog "log"
 	"math"
 	"net"
 	"net/http"
@@ -202,5 +203,13 @@ func main() {
 	log.Infof("Binding to %s for peer gossip; http://%s for HTTP", config.gossipBindAddr, config.httpBindAddr)
 	log.Infof("Advertising to cluster as %s for peer gossip; http://%s for HTTP", config.gossipAdvertiseAddr, config.httpAdvertiseAddr)
 	log.Infof("%d nodes in cluster: %s", len(clstr.Nodes()), clstr.Nodes())
-	log.Fatal(http.ListenAndServe(config.httpBindAddr.String(), router))
+
+	logrusWriter := log.StandardLogger().WriterLevel(log.ErrorLevel)
+	defer logrusWriter.Close()
+	srv := &http.Server{
+		Addr:     config.httpBindAddr.String(),
+		Handler:  router,
+		ErrorLog: stdlog.New(logrusWriter, "", 0),
+	}
+	log.Fatal(srv.ListenAndServe())
 }
