@@ -1,4 +1,6 @@
-# Timbala [![Build Status](https://travis-ci.com/mattbostock/timbala.svg?token=EhqoSPmXWFAXy2qpEaqr&branch=master)](https://travis-ci.com/mattbostock/timbala)
+[![Build Status](https://travis-ci.com/mattbostock/timbala.svg?token=EhqoSPmXWFAXy2qpEaqr&branch=master)](https://travis-ci.com/mattbostock/timbala)
+
+<img src="docs/images/timbala_logo_horizontal.svg" alt="Timbala logo" width="50%" style="margin: 2em 0;">
 
 Timbala is a distributed, fault-tolerant time-series database intended to
 provide durable long-term storage for multi-dimensional metrics.
