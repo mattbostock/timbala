@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"time"
 
+	gokitlog "github.com/go-kit/kit/log"
+	gokitlevel "github.com/go-kit/kit/log/level"
 	v1API "github.com/mattbostock/timbala/internal/api/v1"
 	"github.com/mattbostock/timbala/internal/cluster"
 	"github.com/mattbostock/timbala/internal/read"
@@ -124,8 +126,25 @@ func main() {
 	log.SetFormatter(&log.JSONFormatter{})
 	log.SetOutput(os.Stdout)
 
-	// FIXME: Set logger
-	localStorage, err := tsdb.Open(config.dataDir, nil, prometheus.DefaultRegisterer, &tsdb.Options{
+	// The tsdb library uses the go-kit logger, so create an adapter
+	// FIXME: Convert go-kit levels to Logrus levels
+	var lvlOption gokitlevel.Option
+	switch log.GetLevel() {
+	case log.ErrorLevel:
+		lvlOption = gokitlevel.AllowError()
+	case log.WarnLevel:
+		lvlOption = gokitlevel.AllowWarn()
+	case log.InfoLevel:
+		lvlOption = gokitlevel.AllowInfo()
+	case log.DebugLevel:
+		lvlOption = gokitlevel.AllowDebug()
+	}
+	logrusWriter := log.StandardLogger().Writer()
+	defer logrusWriter.Close()
+	gokitLogger := gokitlog.NewLogfmtLogger(logrusWriter)
+	gokitLogger = gokitlevel.NewFilter(gokitLogger, lvlOption)
+
+	localStorage, err := tsdb.Open(config.dataDir, gokitLogger, prometheus.DefaultRegisterer, &tsdb.Options{
 		WALFlushInterval:  5 * time.Second,
 		RetentionDuration: math.MaxUint64, // approximately 292,471,208 years
 		BlockRanges:       tsdb.ExponentialBlockRanges(int64(2*time.Hour)/1e6, 3, 5),
@@ -204,12 +223,12 @@ func main() {
 	log.Infof("Advertising to cluster as %s for peer gossip; http://%s for HTTP", config.gossipAdvertiseAddr, config.httpAdvertiseAddr)
 	log.Infof("%d nodes in cluster: %s", len(clstr.Nodes()), clstr.Nodes())
 
-	logrusWriter := log.StandardLogger().WriterLevel(log.ErrorLevel)
-	defer logrusWriter.Close()
+	logrusErrorWriter := log.StandardLogger().WriterLevel(log.ErrorLevel)
+	defer logrusErrorWriter.Close()
 	srv := &http.Server{
 		Addr:     config.httpBindAddr.String(),
 		Handler:  router,
-		ErrorLog: stdlog.New(logrusWriter, "", 0),
+		ErrorLog: stdlog.New(logrusErrorWriter, "", 0),
 	}
 	log.Fatal(srv.ListenAndServe())
 }
