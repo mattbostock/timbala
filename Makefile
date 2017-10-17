@@ -25,7 +25,10 @@ savedeps:
 	@dep ensure
 
 test:
-	@go vet ./...
+	@# Disable go vet checking of methods as the Seek method from the
+	@# Prometheus storage.SeriesIterator interface triggers an error.
+	@go vet -methods=false ./...
+
 	@go test ./internal/cluster
 	@go test -race ./...
 

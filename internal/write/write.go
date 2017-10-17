@@ -37,17 +37,17 @@ type Writer interface {
 }
 
 type writer struct {
-	clstr cluster.Cluster
-	store storage.Storage
-	log   *logrus.Logger
-	mu    sync.Mutex
+	clstr      cluster.Cluster
+	localStore storage.Storage
+	log        *logrus.Logger
+	mu         sync.Mutex
 }
 
 func New(c cluster.Cluster, l *logrus.Logger, s storage.Storage) *writer {
 	return &writer{
-		clstr: c,
-		log:   l,
-		store: s,
+		clstr:      c,
+		log:        l,
+		localStore: s,
 	}
 }
 
@@ -84,7 +84,7 @@ func (wr *writer) HandlerFunc(w http.ResponseWriter, r *http.Request) {
 	// This case is very common, to make it fast
 	if r.Header.Get(HTTPHeaderInternalWrite) != "" {
 		wr.mu.Lock()
-		appender, err := wr.store.Appender()
+		appender, err := wr.localStore.Appender()
 		if err != nil {
 			wr.mu.Unlock()
 			wr.log.Warning(err)
@@ -173,7 +173,7 @@ func (wr *writer) HandlerFunc(w http.ResponseWriter, r *http.Request) {
 
 func (wr *writer) localWrite(series seriesMap) error {
 	wr.mu.Lock()
-	appender, err := wr.store.Appender()
+	appender, err := wr.localStore.Appender()
 	if err != nil {
 		wr.mu.Unlock()
 		return err
