@@ -36,18 +36,21 @@ func New(l *logrus.Logger, s storage.Storage) *reader {
 func (re *reader) HandlerFunc(w http.ResponseWriter, r *http.Request) {
 	compressed, err := ioutil.ReadAll(r.Body)
 	if err != nil {
+		re.log.Debug(err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	reqBuf, err := snappy.Decode(nil, compressed)
 	if err != nil {
+		re.log.Debug(err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	var req prompb.ReadRequest
 	if err := proto.Unmarshal(reqBuf, &req); err != nil {
+		re.log.Debug(err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -58,6 +61,7 @@ func (re *reader) HandlerFunc(w http.ResponseWriter, r *http.Request) {
 	for i, query := range req.Queries {
 		from, through, matchers, err := FromQuery(query)
 		if err != nil {
+			re.log.Debug(err)
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
