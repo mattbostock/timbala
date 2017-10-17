@@ -61,19 +61,21 @@ func (wr *writer) HandlerFunc(w http.ResponseWriter, r *http.Request) {
 
 	reqBuf, err := snappy.Decode(nil, compressed)
 	if err != nil {
+		wr.log.Debug(err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	var req = prompb.WriteRequest{Timeseries: make([]*prompb.TimeSeries, 0, numPreallocTimeseries)}
 	if err := req.Unmarshal(reqBuf); err != nil {
+		wr.log.Debug(err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	if len(req.Timeseries) == 0 {
 		err := errors.New("received empty request containing zero timeseries")
-		wr.log.Warningln(err)
+		wr.log.Debug(err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
