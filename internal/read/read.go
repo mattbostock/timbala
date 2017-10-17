@@ -68,6 +68,7 @@ func (re *reader) HandlerFunc(w http.ResponseWriter, r *http.Request) {
 
 		querier, err := re.store.Querier(r.Context(), from.UnixNano()/int64(time.Millisecond), through.UnixNano()/int64(time.Millisecond))
 		if err != nil {
+			re.log.Warning(err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -76,6 +77,7 @@ func (re *reader) HandlerFunc(w http.ResponseWriter, r *http.Request) {
 		sset := querier.Select(matchers...)
 		resp.Results[i], err = ToQueryResult(sset)
 		if err != nil {
+			re.log.Warning(err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -83,6 +85,7 @@ func (re *reader) HandlerFunc(w http.ResponseWriter, r *http.Request) {
 
 	data, err := proto.Marshal(resp)
 	if err != nil {
+		re.log.Warning(err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -93,6 +96,7 @@ func (re *reader) HandlerFunc(w http.ResponseWriter, r *http.Request) {
 	compressed = snappy.Encode(nil, data)
 	_, err = w.Write(compressed)
 	if err != nil {
+		re.log.Warning(err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
