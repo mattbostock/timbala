@@ -55,7 +55,7 @@ func (wr *writer) HandlerFunc(w http.ResponseWriter, r *http.Request) {
 	compressed, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		wr.log.Warningln(err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
