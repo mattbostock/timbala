@@ -39,6 +39,8 @@ const (
 
 	apiRoute     = "/api/v1"
 	metricsRoute = "/metrics"
+
+	maxHTTPRequestBytes = 1024 * 1024 * 10
 )
 
 var (
@@ -226,9 +228,33 @@ func main() {
 	logrusErrorWriter := log.StandardLogger().WriterLevel(log.ErrorLevel)
 	defer logrusErrorWriter.Close()
 	srv := &http.Server{
-		Addr:     config.httpBindAddr.String(),
-		Handler:  router,
-		ErrorLog: stdlog.New(logrusErrorWriter, "", 0),
+		Addr:              config.httpBindAddr.String(),
+		ErrorLog:          stdlog.New(logrusErrorWriter, "", 0),
+		Handler:           maxBytesHandler{router, maxHTTPRequestBytes},
+		IdleTimeout:       2 * time.Minute,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       time.Minute,
+		WriteTimeout:      time.Minute,
 	}
 	log.Fatal(srv.ListenAndServe())
+}
+
+type maxBytesHandler struct {
+	next        http.Handler
+	maxReqBytes int64
+}
+
+func (h maxBytesHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Check the content length before reading any of the request body.
+	// This will also avoid clients uploading the request body if they
+	// support HTTP 100 'Continue', since the Go HTTP server will send
+	// 'Continue' to those clients only once the response body starts being
+	// read.
+	if r.ContentLength > h.maxReqBytes {
+		http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, h.maxReqBytes)
+	h.next.ServeHTTP(w, r)
 }
