@@ -17,6 +17,7 @@ import (
 	"github.com/golang/snappy"
 	"github.com/mattbostock/timbala/internal/read"
 	"github.com/mattbostock/timbala/internal/test/testutil"
+	"github.com/mattbostock/timbala/internal/write"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/prompb"
@@ -264,6 +265,31 @@ func TestRemoteWriteThenRemoteReadBack(t *testing.T) {
 	got := readResp.Results[0].Timeseries[0]
 	if !reflect.DeepEqual(got, expected) {
 		t.Fatalf("Expected %v, got %v", expected, got)
+	}
+}
+
+func TestOversizedRequestsResultInHTTP413(t *testing.T) {
+	c := run()
+	defer teardown(c)
+
+	urls := []string{
+		read.Route,
+		write.Route,
+	}
+	// FIXME Test with Content-Length header unset
+	for _, u := range urls {
+		buf := bytes.NewBuffer(make([]byte, 1024*1024*11))
+		resp, err := http.Post(httpBaseURL+u, " ", buf)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+
+		expected := http.StatusRequestEntityTooLarge
+		got := resp.StatusCode
+		if expected != got {
+			t.Fatalf("Expected HTTP status %d, got %d for %s", expected, got, u)
+		}
 	}
 }
 
