@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	"time"
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
+	"github.com/mattbostock/timbala/internal/cluster"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/prompb"
@@ -15,21 +15,31 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-const Route = "/read"
+const (
+	HTTPHeaderInternalRead        = "X-Timbala-Internal-Read-Version"
+	HTTPHeaderInternalReadVersion = "0.0.1"
+	HTTPHeaderRemoteRead          = "X-Prometheus-Remote-Read-Version"
+	HTTPHeaderRemoteReadVersion   = "0.1.0"
+	Route                         = "/read"
+)
 
 type Reader interface {
 	HandlerFunc(http.ResponseWriter, *http.Request)
 }
 
 type reader struct {
-	store storage.Storage
-	log   *logrus.Logger
+	clstr       cluster.Cluster
+	fanoutStore storage.Storage
+	localStore  storage.Storage
+	log         *logrus.Logger
 }
 
-func New(l *logrus.Logger, s storage.Storage) *reader {
+func New(c cluster.Cluster, l *logrus.Logger, s storage.Storage, fo storage.Storage) *reader {
 	return &reader{
-		log:   l,
-		store: s,
+		clstr:       c,
+		fanoutStore: fo,
+		localStore:  s,
+		log:         l,
 	}
 }
 
@@ -58,19 +68,32 @@ func (re *reader) HandlerFunc(w http.ResponseWriter, r *http.Request) {
 	resp := &prompb.ReadResponse{
 		Results: make([]*prompb.QueryResult, len(req.Queries)),
 	}
+
+	internal := len(r.Header.Get(HTTPHeaderInternalRead)) > 0
 	for i, query := range req.Queries {
-		from, through, matchers, err := FromQuery(query)
+		// FIXME paralellise queries
+		matchers, err := fromLabelMatchers(query.Matchers)
 		if err != nil {
 			re.log.Debug(err)
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
-		querier, err := re.store.Querier(r.Context(), from.UnixNano()/int64(time.Millisecond), through.UnixNano()/int64(time.Millisecond))
-		if err != nil {
-			re.log.Warning(err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
+		var querier storage.Querier
+		if internal {
+			querier, err = re.localStore.Querier(r.Context(), query.StartTimestampMs, query.EndTimestampMs)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				re.log.Error(err)
+				return
+			}
+		} else {
+			querier, err = re.fanoutStore.Querier(r.Context(), query.StartTimestampMs, query.EndTimestampMs)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				re.log.Error(err)
+				return
+			}
 		}
 		defer querier.Close()
 
@@ -98,6 +121,7 @@ func (re *reader) HandlerFunc(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		re.log.Warning(err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		re.log.Error(err)
 		return
 	}
 }
