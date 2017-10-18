@@ -63,5 +63,7 @@ services:
     build:
       context: ../../../
       dockerfile: internal/test/integration/Dockerfile
+    command:
+      - '-test.v'
     depends_on:
       - load_balancer
