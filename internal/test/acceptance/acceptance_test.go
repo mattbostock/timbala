@@ -112,7 +112,7 @@ func TestRemoteWrite(t *testing.T) {
 	testSample.Metric[model.MetricNameLabel] = model.LabelValue(t.Name())
 
 	req := testutil.GenerateRemoteRequest(model.Samples{testSample})
-	resp, err := testutil.PostWriteRequest(httpBaseURL, req)
+	resp, err := testutil.PostWriteRequest(httpBaseURL, req, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +135,7 @@ func TestRemoteWriteThenQueryBack(t *testing.T) {
 	testSample.Metric[model.MetricNameLabel] = model.LabelValue(metricName)
 
 	req := testutil.GenerateRemoteRequest(model.Samples{testSample})
-	resp, err := testutil.PostWriteRequest(httpBaseURL, req)
+	resp, err := testutil.PostWriteRequest(httpBaseURL, req, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -175,7 +175,7 @@ func TestRemoteWriteThenRemoteReadBack(t *testing.T) {
 	testSample.Metric[model.MetricNameLabel] = model.LabelValue(metricName)
 
 	req := testutil.GenerateRemoteRequest(model.Samples{testSample})
-	resp, err := testutil.PostWriteRequest(httpBaseURL, req)
+	resp, err := testutil.PostWriteRequest(httpBaseURL, req, false)
 	if err != nil {
 		t.Fatal(err)
 	}
