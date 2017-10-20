@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io"
-	"io/ioutil"
 	"math/rand"
 	"net/http"
 	"time"
@@ -107,7 +105,7 @@ func QueryAPI(baseURL, query string, ts time.Time) (model.Value, error) {
 	return values, err
 }
 
-func PostWriteRequest(baseURL string, req *prompb.WriteRequest) (*http.Response, error) {
+func PostWriteRequest(baseURL string, req *prompb.WriteRequest, internal bool) (*http.Response, error) {
 	data, err := req.Marshal()
 	if err != nil {
 		return nil, err
@@ -115,11 +113,20 @@ func PostWriteRequest(baseURL string, req *prompb.WriteRequest) (*http.Response,
 
 	compressed := snappy.Encode(nil, data)
 	u := fmt.Sprintf("%s%s", baseURL, "/write")
-	resp, err := http.Post(u, "snappy", bytes.NewBuffer(compressed))
+	httpReq, err := http.NewRequest("POST", u, bytes.NewBuffer(compressed))
 	if err != nil {
 		return nil, err
 	}
-	io.Copy(ioutil.Discard, resp.Body)
+	httpReq.Header.Set("Content-Encoding", "snappy")
+	if internal {
+		// Hardcode header string here otherwise the tests fail on
+		// circular dependencies with the `write` package.
+		httpReq.Header.Set("X-Timbala-Internal-Write-Version", "0.1.0")
+	}
+	resp, err := http.DefaultClient.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
 	resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {

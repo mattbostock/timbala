@@ -157,10 +157,7 @@ func main() {
 		log.Fatalf("Opening storage failed: %s", err)
 	}
 
-	var (
-		_, cancelCtx = context.WithCancel(context.Background())
-		queryEngine  = promql.NewEngine(promtsdb.Adapter(localStorage), promql.DefaultEngineOptions)
-	)
+	var _, cancelCtx = context.WithCancel(context.Background())
 	defer cancelCtx()
 
 	// FIXME: Set context
@@ -197,9 +194,6 @@ func main() {
 		fmt.Fprintf(w, "Mutex profile fraction set to %d, previous value was: %d", fraction, prevValue)
 	})
 
-	var api = v1API.NewAPI(queryEngine, promtsdb.Adapter(localStorage))
-	api.Register(router.WithPrefix(apiRoute))
-
 	clstr, err := cluster.New(
 		&cluster.Config{
 			HTTPAdvertiseAddr:   *config.httpAdvertiseAddr,
@@ -220,6 +214,10 @@ func main() {
 	router.Post(read.Route, reader.HandlerFunc)
 	router.Post(write.Route, writer.HandlerFunc)
 	router.Get(metricsRoute, promhttp.Handler().ServeHTTP)
+
+	queryEngine := promql.NewEngine(fanoutStorage, promql.DefaultEngineOptions)
+	api := v1API.NewAPI(queryEngine, fanoutStorage)
+	api.Register(router.WithPrefix(apiRoute))
 
 	absoluteDataDir, _ := filepath.Abs(config.dataDir)
 	log.Infof("Starting Timbala node %s; data will be stored in %s", clstr.LocalNode(), absoluteDataDir)

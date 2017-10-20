@@ -63,7 +63,56 @@ func TestPrometheusMetricsCanBeQueried(t *testing.T) {
 }
 
 func TestQueryAPIFanout(t *testing.T) {
-	t.Skip("FIXME: implement query API fanout tests")
+	now := model.Now()
+	metricName := t.Name()
+
+	// FIXME deduplicate this code copied from TestRemoteReadFanout()
+	// Send internal writes to 3 nodes, knowing that only those nodes should store each write
+	var wg sync.WaitGroup
+	for _, a := range timbalaAddr {
+		wg.Add(1)
+		go func(addr string) {
+			defer wg.Done()
+
+			testSample := &model.Sample{
+				Metric:    make(model.Metric, 1),
+				Value:     1234,
+				Timestamp: now,
+			}
+			testSample.Metric[model.MetricNameLabel] = model.LabelValue(metricName)
+			testSample.Metric["node"] = model.LabelValue(addr)
+
+			req := testutil.GenerateRemoteRequest(model.Samples{testSample})
+			resp, err := testutil.PostWriteRequest(addr, req, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("Expected HTTP status %d, got %d", http.StatusOK, resp.StatusCode)
+			}
+		}(a)
+	}
+
+	wg.Wait()
+
+	// Query back the data from one node, check for 3 results (one for each node).
+	queryNode := timbalaAddr[0]
+	result, err := testutil.QueryAPI(queryNode, metricName, now.Time())
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
+	if len(result.(model.Vector)) == 0 {
+		t.Error("Got 0 results")
+		return
+	}
+
+	if len(result.(model.Vector)) != 3 {
+		t.Errorf("Expected %d results, got %d", 3, len(result.(model.Vector)))
+		return
+	}
 }
 
 // Test that the remote read API includes results from all matching nodes in
@@ -88,8 +137,7 @@ func TestRemoteReadFanout(t *testing.T) {
 			testSample.Metric["node"] = model.LabelValue(addr)
 
 			req := testutil.GenerateRemoteRequest(model.Samples{testSample})
-			// FIXME add internal header
-			resp, err := testutil.PostWriteRequest(addr, req)
+			resp, err := testutil.PostWriteRequest(addr, req, true)
 			if err != nil {
 				t.Fatal(err)
 			}
