@@ -62,6 +62,10 @@ func TestPrometheusMetricsCanBeQueried(t *testing.T) {
 }
 
 func TestQueryAPIFanout(t *testing.T) {
+	if len(timbalaAddr) != 3 {
+		panic("Test expects a cluster of 3 nodes")
+	}
+
 	now := model.Now()
 	metricName := t.Name()
 
@@ -117,6 +121,10 @@ func TestQueryAPIFanout(t *testing.T) {
 // Test that the remote read API includes results from all matching nodes in
 // the cluster (not just the local node).
 func TestRemoteReadFanout(t *testing.T) {
+	if len(timbalaAddr) != 3 {
+		panic("Test expects a cluster of 3 nodes")
+	}
+
 	now := model.Now()
 	metricName := t.Name()
 
