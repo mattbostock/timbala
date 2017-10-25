@@ -127,6 +127,13 @@ func (n *Node) Name() string {
 func (n *Node) Addr() string {
 	return n.mln.Address()
 }
+func (n *Node) Bucket() (string, error) {
+	m, err := n.meta()
+	if err != nil {
+		return "", err
+	}
+	return m.Bucket, nil
+}
 func (n *Node) HTTPAddr() (string, error) {
 	m, err := n.meta()
 	if err != nil {
@@ -146,11 +153,13 @@ func (nodes Nodes) Swap(i, j int)      { nodes[i], nodes[j] = nodes[j], nodes[i]
 
 type delegate struct {
 	localHTTPAdvertiseAddr string
+	localBucket            int
 }
 
 func (d *delegate) NodeMeta(limit int) []byte {
 	// FIXME respect limit
 	j, _ := json.Marshal(&nodeMeta{
+		Bucket:   d.localBucket,
 		HTTPAddr: d.localHTTPAdvertiseAddr,
 	})
 	return j

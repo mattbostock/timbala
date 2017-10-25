@@ -33,6 +33,7 @@ const (
 	defaultDataDir  = "./data"
 	defaultHTTPAddr = "localhost:9080"
 	defaultPeerAddr = "localhost:7946"
+	dataBucketLock  = "bucket.lock"
 
 	apiRoute     = "/api/v1"
 	metricsRoute = "/metrics"

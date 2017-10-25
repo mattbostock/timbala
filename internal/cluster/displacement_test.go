@@ -41,18 +41,19 @@ func TestHashringDisplacement(t *testing.T) {
 			continue
 		}
 
-		// Check results for every pair
+		// Check results for every pair of cluster sizes
+		// FIXME use t.Run() to document what is being tested
 		if i%2 == 1 {
 			// Accounts for forwarding
-			expectedChange := 1.0 / (float64(numTestNodes) / (1 + (1.0 / float64(DefaultReplFactor)))) * float64(uniqueReplicatedSamples)
+			expectedChange := 1.0 / (float64(numTestNodes) / (1.0 + (1.0 / float64(DefaultReplFactor)))) * float64(uniqueReplicatedSamples)
 			changed := float64(len(sampleToNode) - uniqueReplicatedSamples)
 			if changed > expectedChange {
 				t.Fatalf("Expected less than %.0f data samples to change nodes, %.0f changed", expectedChange, changed)
 			}
 
 			fmt.Printf("%d unique samples\n", uniqueReplicatedSamples)
-			fmt.Printf("should be at most %.2f changed\n", expectedChange)
-			fmt.Printf("%d actually changed node\n", len(sampleToNode)-uniqueReplicatedSamples)
+			fmt.Printf("At most %.0f samples should change node\n", expectedChange)
+			fmt.Printf("%d samples changed node\n", len(sampleToNode)-uniqueReplicatedSamples)
 
 			sampleToNode = make(map[string]int)
 		}
