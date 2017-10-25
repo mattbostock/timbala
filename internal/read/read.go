@@ -5,7 +5,6 @@ import (
 	"io/ioutil"
 	"net/http"
 
-	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/mattbostock/timbala/internal/cluster"
 	"github.com/prometheus/common/model"
@@ -59,7 +58,7 @@ func (re *reader) HandlerFunc(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req prompb.ReadRequest
-	if err := proto.Unmarshal(reqBuf, &req); err != nil {
+	if err := req.Unmarshal(reqBuf); err != nil {
 		re.log.Debug(err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -106,7 +105,7 @@ func (re *reader) HandlerFunc(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	data, err := proto.Marshal(resp)
+	data, err := resp.Marshal()
 	if err != nil {
 		re.log.Warning(err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)

@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/mattbostock/timbala/internal/read"
 	"github.com/mattbostock/timbala/internal/test/testutil"
@@ -168,7 +167,7 @@ func TestRemoteReadFanout(t *testing.T) {
 		}},
 	}
 
-	data, err := proto.Marshal(readReq)
+	data, err := readReq.Marshal()
 	if err != nil {
 		t.Fatalf("Unable to marshal read request: %v", err)
 	}
@@ -202,7 +201,7 @@ func TestRemoteReadFanout(t *testing.T) {
 	}
 
 	var readResp prompb.ReadResponse
-	err = proto.Unmarshal(uncompressed, &readResp)
+	err = readResp.Unmarshal(uncompressed)
 	if err != nil {
 		t.Fatalf("Unnable to unmarshal response body: %v", err)
 	}
