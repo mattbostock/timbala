@@ -10,7 +10,6 @@ import (
 	"sort"
 	"time"
 
-	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/mattbostock/timbala/internal/cluster"
 	"github.com/mattbostock/timbala/internal/read"
@@ -158,7 +157,7 @@ func (c *remoteClient) Read(ctx context.Context, from, through int64, matchers [
 		}},
 	}
 
-	data, err := proto.Marshal(req)
+	data, err := req.Marshal()
 	if err != nil {
 		return nil, fmt.Errorf("unable to marshal read request: %v", err)
 	}
@@ -196,7 +195,7 @@ func (c *remoteClient) Read(ctx context.Context, from, through int64, matchers [
 	}
 
 	var resp prompb.ReadResponse
-	err = proto.Unmarshal(uncompressed, &resp)
+	err = resp.Unmarshal(uncompressed)
 	if err != nil {
 		return nil, fmt.Errorf("unable to unmarshal response body: %v", err)
 	}
