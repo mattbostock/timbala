@@ -4,6 +4,7 @@ package integration
 
 import (
 	"bytes"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"sync"
@@ -69,37 +70,11 @@ func TestQueryAPIFanout(t *testing.T) {
 	now := model.Now()
 	metricName := t.Name()
 
-	// Send internal writes to 2 nodes, knowing that only those nodes should store each write.
-	// Write to 2 nodes rather than 3 so that we're sure that the test isn't just passing because
-	// writes are being accidentally repeated to all nodes in the cluster.
-	// FIXME deduplicate this code copied from TestRemoteReadFanout()
-	var wg sync.WaitGroup
-	for i := 0; i < 2; i++ {
-		wg.Add(1)
-		go func(addr string) {
-			defer wg.Done()
-
-			testSample := &model.Sample{
-				Metric:    make(model.Metric, 1),
-				Value:     1234,
-				Timestamp: now,
-			}
-			testSample.Metric[model.MetricNameLabel] = model.LabelValue(metricName)
-			testSample.Metric["node"] = model.LabelValue(addr)
-
-			req := testutil.GenerateRemoteRequest(model.Samples{testSample})
-			resp, err := testutil.PostWriteRequest(addr, req, true)
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			if resp.StatusCode != http.StatusOK {
-				t.Fatalf("Expected HTTP status %d, got %d", http.StatusOK, resp.StatusCode)
-			}
-		}(timbalaAddr[i])
+	err := sendInternalWritesToNodes(metricName, now, timbalaAddr)
+	if err != nil {
+		t.Error(err)
+		return
 	}
-
-	wg.Wait()
 
 	// Send a query that matches both writes to the third node (which we
 	// have not written to) and check we got back all the data
@@ -133,36 +108,11 @@ func TestRemoteReadFanout(t *testing.T) {
 	now := model.Now()
 	metricName := t.Name()
 
-	// Send internal writes to 2 nodes, knowing that only those nodes should store each write.
-	// Write to 2 nodes rather than 3 so that we're sure that the test isn't just passing because
-	// writes are being accidentally repeated to all nodes in the cluster.
-	var wg sync.WaitGroup
-	for i := 0; i < 2; i++ {
-		wg.Add(1)
-		go func(addr string) {
-			defer wg.Done()
-
-			testSample := &model.Sample{
-				Metric:    make(model.Metric, 1),
-				Value:     1234,
-				Timestamp: now,
-			}
-			testSample.Metric[model.MetricNameLabel] = model.LabelValue(metricName)
-			testSample.Metric["node"] = model.LabelValue(addr)
-
-			req := testutil.GenerateRemoteRequest(model.Samples{testSample})
-			resp, err := testutil.PostWriteRequest(addr, req, true)
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			if resp.StatusCode != http.StatusOK {
-				t.Fatalf("Expected HTTP status %d, got %d", http.StatusOK, resp.StatusCode)
-			}
-		}(timbalaAddr[i])
+	err := sendInternalWritesToNodes(metricName, now, timbalaAddr)
+	if err != nil {
+		t.Error(err)
+		return
 	}
-
-	wg.Wait()
 
 	// Send a query that matches both writes to the third node (which we
 	// have not written to) and check we got back all the data
@@ -228,4 +178,51 @@ func TestRemoteReadFanout(t *testing.T) {
 		t.Fatalf("Got %d timeseries, expected %d", got, expected)
 		return
 	}
+}
+
+func sendInternalWritesToNodes(metricName string, now model.Time, nodes []string) error {
+	var (
+		wg        sync.WaitGroup
+		wgErrChan = make(chan error, len(nodes))
+	)
+
+	// Write to 2 nodes rather than 3 so that we're sure that the test
+	// isn't just passing because writes are being accidentally repeated to
+	// all nodes in the cluster.
+	for _, a := range nodes[:2] {
+		wg.Add(1)
+		go func(addr string) {
+			defer wg.Done()
+
+			testSample := &model.Sample{
+				Metric:    make(model.Metric, 1),
+				Value:     1234,
+				Timestamp: now,
+			}
+			testSample.Metric[model.MetricNameLabel] = model.LabelValue(metricName)
+			testSample.Metric["node"] = model.LabelValue(addr)
+
+			req := testutil.GenerateRemoteRequest(model.Samples{testSample})
+			resp, err := testutil.PostWriteRequest(addr, req, true)
+			if err != nil {
+				wgErrChan <- err
+				return
+			}
+
+			if resp.StatusCode != http.StatusOK {
+				wgErrChan <- fmt.Errorf("Expected HTTP status %d, got %d", http.StatusOK, resp.StatusCode)
+				return
+			}
+		}(a)
+	}
+
+	wg.Wait()
+
+	select {
+	case err := <-wgErrChan:
+		return err
+	default:
+	}
+
+	return nil
 }
