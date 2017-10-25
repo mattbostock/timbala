@@ -69,10 +69,12 @@ func TestQueryAPIFanout(t *testing.T) {
 	now := model.Now()
 	metricName := t.Name()
 
+	// Send internal writes to 2 nodes, knowing that only those nodes should store each write.
+	// Write to 2 nodes rather than 3 so that we're sure that the test isn't just passing because
+	// writes are being accidentally repeated to all nodes in the cluster.
 	// FIXME deduplicate this code copied from TestRemoteReadFanout()
-	// Send internal writes to 3 nodes, knowing that only those nodes should store each write
 	var wg sync.WaitGroup
-	for _, a := range timbalaAddr {
+	for i := 0; i < 2; i++ {
 		wg.Add(1)
 		go func(addr string) {
 			defer wg.Done()
@@ -94,13 +96,14 @@ func TestQueryAPIFanout(t *testing.T) {
 			if resp.StatusCode != http.StatusOK {
 				t.Fatalf("Expected HTTP status %d, got %d", http.StatusOK, resp.StatusCode)
 			}
-		}(a)
+		}(timbalaAddr[i])
 	}
 
 	wg.Wait()
 
-	// Query back the data from one node, check for 3 results (one for each node).
-	queryNode := timbalaAddr[0]
+	// Send a query that matches both writes to the third node (which we
+	// have not written to) and check we got back all the data
+	queryNode := timbalaAddr[2]
 	result, err := testutil.QueryAPI(queryNode, metricName, now.Time())
 	if err != nil {
 		t.Error(err)
@@ -112,8 +115,10 @@ func TestQueryAPIFanout(t *testing.T) {
 		return
 	}
 
-	if len(result.(model.Vector)) != 3 {
-		t.Errorf("Expected %d results, got %d", 3, len(result.(model.Vector)))
+	got := len(result.(model.Vector))
+	expected := 2
+	if got != expected {
+		t.Errorf("Expected %d results, got %d", expected, got)
 		return
 	}
 }
@@ -128,9 +133,11 @@ func TestRemoteReadFanout(t *testing.T) {
 	now := model.Now()
 	metricName := t.Name()
 
-	// Send internal writes to 3 nodes, knowing that only those nodes should store each write
+	// Send internal writes to 2 nodes, knowing that only those nodes should store each write.
+	// Write to 2 nodes rather than 3 so that we're sure that the test isn't just passing because
+	// writes are being accidentally repeated to all nodes in the cluster.
 	var wg sync.WaitGroup
-	for _, a := range timbalaAddr {
+	for i := 0; i < 2; i++ {
 		wg.Add(1)
 		go func(addr string) {
 			defer wg.Done()
@@ -152,13 +159,14 @@ func TestRemoteReadFanout(t *testing.T) {
 			if resp.StatusCode != http.StatusOK {
 				t.Fatalf("Expected HTTP status %d, got %d", http.StatusOK, resp.StatusCode)
 			}
-		}(a)
+		}(timbalaAddr[i])
 	}
 
 	wg.Wait()
 
-	// Send a query that matches all 3 writes and check we got back all the data
-	queryNode := timbalaAddr[0]
+	// Send a query that matches both writes to the third node (which we
+	// have not written to) and check we got back all the data
+	queryNode := timbalaAddr[2]
 
 	// FIXME deduplicate this code copied from the acceptance tests
 	readReq := &prompb.ReadRequest{
@@ -214,8 +222,10 @@ func TestRemoteReadFanout(t *testing.T) {
 		t.Fatalf("Unnable to unmarshal response body: %v", err)
 	}
 
-	if len(readResp.Results[0].Timeseries) != 3 {
-		t.Fatalf("Got %d timeseries, expected %d", len(readResp.Results[0].Timeseries), 3)
+	got := len(readResp.Results[0].Timeseries)
+	expected := 2
+	if got != expected {
+		t.Fatalf("Got %d timeseries, expected %d", got, expected)
 		return
 	}
 }
