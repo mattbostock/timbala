@@ -11,7 +11,7 @@ before_install:
   - sudo apt-get -y -o Dpkg::Options::="--force-confnew" install docker-ce
 
 install:
-  - curl --silent --location --output dep https://github.com/golang/dep/releases/download/v0.3.2/dep-linux-amd64
+  - curl --fail --show-error --silent --location --output dep https://github.com/golang/dep/releases/download/v0.3.2/dep-linux-amd64
   - chmod +x dep
   - cp dep $HOME/gopath/bin/
 
