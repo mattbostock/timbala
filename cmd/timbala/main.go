@@ -208,9 +208,9 @@ func main() {
 		log.Fatal("Failed to join the cluster: ", err)
 	}
 
-	fanoutStorage := fanout.New(clstr, log.StandardLogger(), promtsdb.Adapter(localStorage))
-	reader := read.New(clstr, log.StandardLogger(), promtsdb.Adapter(localStorage), fanoutStorage)
-	writer := write.New(clstr, log.StandardLogger(), promtsdb.Adapter(localStorage))
+	fanoutStorage := fanout.New(clstr, log.StandardLogger(), promtsdb.Adapter(localStorage, 0))
+	reader := read.New(clstr, log.StandardLogger(), promtsdb.Adapter(localStorage, 0), fanoutStorage)
+	writer := write.New(clstr, log.StandardLogger(), promtsdb.Adapter(localStorage, 0))
 	router.Post(read.Route, reader.HandlerFunc)
 	router.Post(write.Route, writer.HandlerFunc)
 	router.Get(metricsRoute, promhttp.Handler().ServeHTTP)

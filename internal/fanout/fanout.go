@@ -77,6 +77,10 @@ func (f *fanoutStorage) Appender() (storage.Appender, error) {
 	panic("not implemented")
 }
 
+func (f *fanoutStorage) StartTime() (int64, error) {
+	return 0, nil
+}
+
 func (f *fanoutStorage) Close() error {
 	return nil
 }

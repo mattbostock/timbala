@@ -30,16 +30,34 @@ func (r *Storage) Querier(_ context.Context, mint, maxt int64) (storage.Querier,
 	defer r.mtx.Unlock()
 
 	queriers := make([]storage.Querier, 0, len(r.clients))
+	localStartTime, err := r.localStartTimeCallback()
+	if err != nil {
+		return nil, err
+	}
 	for _, c := range r.clients {
+		cmaxt := maxt
+		if !c.readRecent {
+			// Avoid queries whose timerange is later than the first timestamp in local DB.
+			if mint > localStartTime {
+				continue
+			}
+			// Query only samples older than the first timestamp in local DB.
+			if maxt > localStartTime {
+				cmaxt = localStartTime
+			}
+		}
 		queriers = append(queriers, &querier{
 			mint:           mint,
-			maxt:           maxt,
+			maxt:           cmaxt,
 			client:         c,
 			externalLabels: r.externalLabels,
 		})
 	}
-	return storage.NewMergeQuerier(queriers), nil
+	return newMergeQueriers(queriers), nil
 }
+
+// Store it in variable to make it mockable in tests since a mergeQuerier is not publicly exposed.
+var newMergeQueriers = storage.NewMergeQuerier
 
 // Querier is an adapter to make a Client usable as a storage.Querier.
 type querier struct {
@@ -60,7 +78,7 @@ func (q *querier) Select(matchers ...*labels.Matcher) storage.SeriesSet {
 	series := make([]storage.Series, 0, len(res))
 	for _, ts := range res {
 		labels := labelPairsToLabels(ts.Labels)
-		removeLabels(labels, added)
+		removeLabels(&labels, added)
 		series = append(series, &concreteSeries{
 			labels:  labels,
 			samples: ts.Samples,
@@ -189,6 +207,7 @@ func newConcreteSeriersIterator(series *concreteSeries) storage.SeriesIterator {
 	}
 }
 
+// Seek implements storage.SeriesIterator.
 func (c *concreteSeriesIterator) Seek(t int64) bool {
 	c.cur = sort.Search(len(c.series.samples), func(n int) bool {
 		return c.series.samples[n].Timestamp >= t
@@ -196,16 +215,19 @@ func (c *concreteSeriesIterator) Seek(t int64) bool {
 	return c.cur < len(c.series.samples)
 }
 
+// At implements storage.SeriesIterator.
 func (c *concreteSeriesIterator) At() (t int64, v float64) {
 	s := c.series.samples[c.cur]
 	return s.Timestamp, s.Value
 }
 
+// Next implements storage.SeriesIterator.
 func (c *concreteSeriesIterator) Next() bool {
 	c.cur++
 	return c.cur < len(c.series.samples)
 }
 
+// Err implements storage.SeriesIterator.
 func (c *concreteSeriesIterator) Err() error {
 	return nil
 }
@@ -236,10 +258,10 @@ func (q *querier) addExternalLabels(matchers []*labels.Matcher) ([]*labels.Match
 	return matchers, el
 }
 
-func removeLabels(l labels.Labels, toDelete model.LabelSet) {
-	for i := 0; i < len(l); {
-		if _, ok := toDelete[model.LabelName(l[i].Name)]; ok {
-			l = l[:i+copy(l[i:], l[i+1:])]
+func removeLabels(l *labels.Labels, toDelete model.LabelSet) {
+	for i := 0; i < len(*l); {
+		if _, ok := toDelete[model.LabelName((*l)[i].Name)]; ok {
+			*l = (*l)[:i+copy((*l)[i:], (*l)[i+1:])]
 		} else {
 			i++
 		}

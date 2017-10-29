@@ -14,11 +14,14 @@
 package remote
 
 import (
+	"context"
 	"reflect"
 	"sort"
 	"testing"
+	"time"
 
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/prometheus/prometheus/storage"
@@ -95,6 +98,29 @@ func TestAddExternalLabels(t *testing.T) {
 	}
 }
 
+func TestRemoveLabels(t *testing.T) {
+	tests := []struct {
+		in       labels.Labels
+		out      labels.Labels
+		toRemove model.LabelSet
+	}{
+		{
+			toRemove: model.LabelSet{"foo": "bar"},
+			in:       labels.FromStrings("foo", "bar", "a", "b"),
+			out:      labels.FromStrings("a", "b"),
+		},
+	}
+
+	for i, test := range tests {
+		in := test.in.Copy()
+		removeLabels(&in, test.toRemove)
+
+		if !reflect.DeepEqual(in, test.out) {
+			t.Fatalf("%d. unexpected labels; want %v, got %v", i, test.out, in)
+		}
+	}
+}
+
 func TestConcreteSeriesSet(t *testing.T) {
 	series1 := &concreteSeries{
 		labels:  labels.FromStrings("foo", "bar"),
@@ -121,5 +147,61 @@ func TestConcreteSeriesSet(t *testing.T) {
 	}
 	if c.Next() {
 		t.Fatalf("Expected Next() to be false.")
+	}
+}
+
+type mockMergeQuerier struct{ queriersCount int }
+
+func (*mockMergeQuerier) Select(...*labels.Matcher) storage.SeriesSet { return nil }
+func (*mockMergeQuerier) LabelValues(name string) ([]string, error)   { return nil, nil }
+func (*mockMergeQuerier) Close() error                                { return nil }
+
+func TestRemoteStorageQuerier(t *testing.T) {
+	tests := []struct {
+		localStartTime        int64
+		readRecentClients     []bool
+		mint                  int64
+		maxt                  int64
+		expectedQueriersCount int
+	}{
+		{
+			localStartTime:    int64(20),
+			readRecentClients: []bool{true, true, false},
+			mint:              int64(0),
+			maxt:              int64(50),
+			expectedQueriersCount: 3,
+		},
+		{
+			localStartTime:    int64(20),
+			readRecentClients: []bool{true, true, false},
+			mint:              int64(30),
+			maxt:              int64(50),
+			expectedQueriersCount: 2,
+		},
+	}
+
+	for i, test := range tests {
+		s := NewStorage(nil, func() (int64, error) { return test.localStartTime, nil })
+		s.clients = []*Client{}
+		for _, readRecent := range test.readRecentClients {
+			c, _ := NewClient(0, &clientConfig{
+				url:              nil,
+				timeout:          model.Duration(30 * time.Second),
+				httpClientConfig: config.HTTPClientConfig{},
+				readRecent:       readRecent,
+			})
+			s.clients = append(s.clients, c)
+		}
+		// overrides mergeQuerier to mockMergeQuerier so we can reflect its type
+		newMergeQueriers = func(queriers []storage.Querier) storage.Querier {
+			return &mockMergeQuerier{queriersCount: len(queriers)}
+		}
+
+		querier, _ := s.Querier(context.Background(), test.mint, test.maxt)
+		actualQueriersCount := reflect.ValueOf(querier).Interface().(*mockMergeQuerier).queriersCount
+
+		if !reflect.DeepEqual(actualQueriersCount, test.expectedQueriersCount) {
+			t.Fatalf("%d. unexpected queriers count; want %v, got %v", i, test.expectedQueriersCount, actualQueriersCount)
+		}
 	}
 }

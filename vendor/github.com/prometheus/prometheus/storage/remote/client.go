@@ -16,6 +16,7 @@ package remote
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -24,10 +25,9 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/snappy"
-	"golang.org/x/net/context"
+	"github.com/prometheus/common/model"
 	"golang.org/x/net/context/ctxhttp"
 
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/prometheus/prometheus/util/httputil"
@@ -37,15 +37,17 @@ const maxErrMsgLen = 256
 
 // Client allows reading and writing from/to a remote HTTP endpoint.
 type Client struct {
-	index   int // Used to differentiate metrics.
-	url     *config.URL
-	client  *http.Client
-	timeout time.Duration
+	index      int // Used to differentiate metrics.
+	url        *config.URL
+	client     *http.Client
+	timeout    time.Duration
+	readRecent bool
 }
 
 type clientConfig struct {
 	url              *config.URL
 	timeout          model.Duration
+	readRecent       bool
 	httpClientConfig config.HTTPClientConfig
 }
 
@@ -57,10 +59,11 @@ func NewClient(index int, conf *clientConfig) (*Client, error) {
 	}
 
 	return &Client{
-		index:   index,
-		url:     conf.url,
-		client:  httpClient,
-		timeout: time.Duration(conf.timeout),
+		index:      index,
+		url:        conf.url,
+		client:     httpClient,
+		timeout:    time.Duration(conf.timeout),
+		readRecent: conf.readRecent,
 	}, nil
 }
 
