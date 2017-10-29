@@ -93,7 +93,7 @@ func (w *memoryWAL) Reader() WALReader {
 	return w
 }
 
-func (w *memoryWAL) Read(series SeriesCB, samples SamplesCB, deletes DeletesCB) error {
+func (w *memoryWAL) Read(series func([]RefSeries), samples func([]RefSample), deletes func([]Stone)) error {
 	for _, e := range w.entries {
 		switch v := e.(type) {
 		case []RefSeries:
@@ -322,7 +322,8 @@ Outer:
 		}
 
 		// Compare the result.
-		q := NewBlockQuerier(head.Index(), head.Chunks(), head.Tombstones(), head.MinTime(), head.MaxTime())
+		q, err := NewBlockQuerier(head, head.MinTime(), head.MaxTime())
+		require.NoError(t, err)
 		res := q.Select(labels.NewEqualMatcher("a", "b"))
 
 		expSamples := make([]sample, 0, len(c.remaint))
@@ -657,5 +658,45 @@ func TestComputeChunkEndTime(t *testing.T) {
 		if got != c.res {
 			t.Errorf("expected %d for (start: %d, cur: %d, max: %d), got %d", c.res, c.start, c.cur, c.max, got)
 		}
+	}
+}
+
+func TestMemSeries_append(t *testing.T) {
+	s := newMemSeries(labels.Labels{}, 1, 500)
+
+	// Add first two samples at the very end of a chunk range and the next two
+	// on and after it.
+	// New chunk must correctly be cut at 1000.
+	ok, chunkCreated := s.append(998, 1)
+	Assert(t, ok, "append failed")
+	Assert(t, chunkCreated, "first sample created chunk")
+
+	ok, chunkCreated = s.append(999, 2)
+	Assert(t, ok, "append failed")
+	Assert(t, !chunkCreated, "second sample should use same chunk")
+
+	ok, chunkCreated = s.append(1000, 3)
+	Assert(t, ok, "append failed")
+	Assert(t, ok, "expected new chunk on boundary")
+
+	ok, chunkCreated = s.append(1001, 4)
+	Assert(t, ok, "append failed")
+	Assert(t, !chunkCreated, "second sample should use same chunk")
+
+	Assert(t, s.chunks[0].minTime == 998 && s.chunks[0].maxTime == 999, "wrong chunk range")
+	Assert(t, s.chunks[1].minTime == 1000 && s.chunks[1].maxTime == 1001, "wrong chunk range")
+
+	// Fill the range [1000,2000) with many samples. Intermediate chunks should be cut
+	// at approximately 120 samples per chunk.
+	for i := 1; i < 1000; i++ {
+		ok, _ := s.append(1001+int64(i), float64(i))
+		Assert(t, ok, "append failed")
+	}
+
+	Assert(t, len(s.chunks) > 7, "expected intermediate chunks")
+
+	// All chunks but the first and last should now be moderately full.
+	for i, c := range s.chunks[1 : len(s.chunks)-1] {
+		Assert(t, c.chunk.NumSamples() > 100, "unexpected small chunk %d of length %d", i, c.chunk.NumSamples())
 	}
 }

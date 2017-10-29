@@ -1,3 +1,19 @@
+## 2.0.0-rc.2 / 2017-10-25
+
+* [ENHANCEMENT] handle WAL segments with corrupted header gracefully
+* [ENHANCEMENT] stabilize memory usage during WAL replay
+* [CHANGE] Prefix all storage metrics with `prometheus_`
+* [BUGFIX] Correctly handle label removal in remote read
+* [BUGFIX] Fix chunk misalignment causing out-of-order samples
+* [BUGFIX] Fix connection leak in Consul SD
+* [BUGFIX] Handle invalid chunk derefernces gracefully
+* [BUGFIX] Prevent potential deadlock during failing querier construction
+
+Data written in previous pre-release versions may have been affected by the out-of-order
+bug. Reading this data may reveal artefacts and incorrect data.
+Starting with a clean storage directory is advised. The WAL directory may safely be kept.
+
+
 ## 1.8.0 / 2017-10-06
 
 * [CHANGE] Rule links link to the _Console_ tab rather than the _Graph_ tab to
@@ -27,20 +43,6 @@
 * [BUGFIX] Apply path prefix to redirect from deprecated graph URL.
 * [BUGFIX] Fixed tests on MS Windows.
 * [BUGFIX] Check for invalid UTF-8 in label values after relabeling.
-
-## v2.0.0-rc.0 / 2017-10-05
-
-This release includes numerous changes to the new storage layer. The main changes are:
-
-* [CHANGE] Remove `count_scalar`, `keep_common` and `drop_common_labels` functions
-* [CHANGE] Breaking change in the index format for better consistency 
-* [BUGFIX] Fix panic due garbage collected mmap'ed strings 
-* [BUGFIX] Fix broken snapshots and admin APIs 
-* [BUGFIX] Send HTTP Accept header when scraping
-* [BUGFIX] Use the WAL flush interval passed instead of the hardcoded value
-
-This release requires a clean storage directory and is not compatible with files
-created by previous beta releases.
 
 ## 1.7.2 / 2017-09-26
 
