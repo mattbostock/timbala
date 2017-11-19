@@ -1,4 +1,4 @@
-[![Build Status](https://travis-ci.com/mattbostock/timbala.svg?token=EhqoSPmXWFAXy2qpEaqr&branch=master)](https://travis-ci.com/mattbostock/timbala)
+[![Build Status](https://travis-ci.org/mattbostock/timbala.svg?branch=master)](https://travis-ci.org/mattbostock/timbala)
 
 
 ## Project status
