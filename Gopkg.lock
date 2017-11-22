@@ -231,13 +231,13 @@
 
 [[projects]]
   name = "github.com/prometheus/prometheus"
-  packages = ["config","pkg/labels","pkg/textparse","pkg/timestamp","pkg/value","prompb","promql","storage","storage/tsdb","util/httputil","util/stats","util/strutil","util/testutil"]
-  revision = "v2.0.0-rc.2"
+  packages = ["config","pkg/labels","pkg/textparse","pkg/timestamp","pkg/value","prompb","promql","relabel","storage","storage/remote","storage/tsdb","util/httputil","util/stats","util/strutil","util/testutil"]
+  revision = "v2.0.0"
 
 [[projects]]
   name = "github.com/prometheus/tsdb"
   packages = [".","chunks","fileutil","labels"]
-  revision = "5d28c849c7ff3b43e2829a44a9aac16468e076ce"
+  revision = "706602daed1487f7849990678b4ece4599745905"
 
 [[projects]]
   name = "github.com/retailnext/hllpp"
@@ -289,6 +289,12 @@
 
 [[projects]]
   branch = "master"
+  name = "golang.org/x/time"
+  packages = ["rate"]
+  revision = "6dc17368e09b0e8634d71cac8168d853e869a0c7"
+
+[[projects]]
+  branch = "master"
   name = "google.golang.org/genproto"
   packages = ["googleapis/api/annotations","googleapis/rpc/status"]
   revision = "595979c8a7bf586b2d293fb42246bf91a0b893d9"
@@ -314,6 +320,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "2d10783679878b5809502bef76828997299246a545ee613a04816bd85a0e5f0f"
+  inputs-digest = "219e967f54e6b2330b822bc0ac994db3e82b9b6cabcb4d61732bc62f115b6e5e"
   solver-name = "gps-cdcl"
   solver-version = 1
