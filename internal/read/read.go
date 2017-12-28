@@ -177,4 +177,4 @@ func toLabelMatchers(matchers []*labels.Matcher) ([]*prompb.LabelMatcher, error)
 	return result, nil
 }
 
-// £ND FIXME
+// END FIXME
