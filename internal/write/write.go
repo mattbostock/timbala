@@ -24,7 +24,6 @@ import (
 const (
 	HTTPHeaderInternalWrite        = "X-Timbala-Internal-Write-Version"
 	HTTPHeaderInternalWriteVersion = "0.0.1"
-	HTTPHeaderPartitionKeySalt     = "X-Timbala-Partition-Key-Salt"
 	Route                          = "/write"
 
 	httpHeaderRemoteWrite        = "X-Prometheus-Remote-Write-Version"
@@ -119,7 +118,6 @@ func (wr *writer) HandlerFunc(w http.ResponseWriter, r *http.Request) {
 		seriesToNodes[*n] = make(seriesMap, numPreallocTimeseries)
 	}
 
-	pSalt := []byte(r.Header.Get(HTTPHeaderPartitionKeySalt))
 	for _, ts := range req.Timeseries {
 		m := make(labels.Labels, 0, len(ts.Labels))
 		for _, l := range ts.Labels {
@@ -135,7 +133,7 @@ func (wr *writer) HandlerFunc(w http.ResponseWriter, r *http.Request) {
 		for _, s := range ts.Samples {
 			timestamp := time.Unix(s.Timestamp/1000, (s.Timestamp-s.Timestamp/1000)*1e6)
 			// FIXME: Avoid panic if the cluster is not yet initialised
-			pKey := cluster.PartitionKey(pSalt, timestamp, mHash)
+			pKey := cluster.PartitionKey(timestamp, mHash)
 			for _, n := range wr.clstr.NodesByPartitionKey(pKey) {
 				if _, ok := seriesToNodes[*n][mHash]; !ok {
 					// FIXME handle change in cluster size

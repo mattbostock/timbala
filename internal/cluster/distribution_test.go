@@ -77,7 +77,7 @@ func testSampleDistribution(t *testing.T, clstr Cluster, samples model.Samples) 
 	var replicationSpread stats.Float64Data
 	for _, s := range samples {
 		spread := make(map[string]bool)
-		pKey := PartitionKey([]byte{}, s.Timestamp.Time(), xxhash.Sum64String(s.Metric.String()))
+		pKey := PartitionKey(s.Timestamp.Time(), xxhash.Sum64String(s.Metric.String()))
 		for _, n := range clstr.NodesByPartitionKey(pKey) {
 			buckets[n.Name()] = append(buckets[n.Name()], s)
 			spread[n.Name()] = true
