@@ -36,7 +36,7 @@ import (
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/tsdb/chunks"
+	"github.com/prometheus/tsdb/chunkenc"
 	"github.com/prometheus/tsdb/fileutil"
 	"github.com/prometheus/tsdb/labels"
 )
@@ -52,7 +52,7 @@ var DefaultOptions = &Options{
 
 // Options of the DB storage.
 type Options struct {
-	// The interval at which the write ahead log is flushed to disc.
+	// The interval at which the write ahead log is flushed to disk.
 	WALFlushInterval time.Duration
 
 	// Duration of persisted data to keep.
@@ -99,9 +99,8 @@ type DB struct {
 	logger    log.Logger
 	metrics   *dbMetrics
 	opts      *Options
-	chunkPool chunks.Pool
+	chunkPool chunkenc.Pool
 	compactor Compactor
-	wal       WAL
 
 	// Mutex for that must be held when modifying the general block layout.
 	mtx    sync.RWMutex
@@ -123,6 +122,7 @@ type dbMetrics struct {
 	reloads              prometheus.Counter
 	reloadsFailed        prometheus.Counter
 	compactionsTriggered prometheus.Counter
+	tombCleanTimer       prometheus.Histogram
 }
 
 func newDBMetrics(db *DB, r prometheus.Registerer) *dbMetrics {
@@ -142,11 +142,15 @@ func newDBMetrics(db *DB, r prometheus.Registerer) *dbMetrics {
 	})
 	m.reloadsFailed = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "prometheus_tsdb_reloads_failures_total",
-		Help: "Number of times the database failed to reload black data from disk.",
+		Help: "Number of times the database failed to reload block data from disk.",
 	})
 	m.compactionsTriggered = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "prometheus_tsdb_compactions_triggered_total",
 		Help: "Total number of triggered compactions for the partition.",
+	})
+	m.tombCleanTimer = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name: "prometheus_tsdb_tombstone_cleanup_seconds",
+		Help: "The time taken to recompact blocks to remove tombstones.",
 	})
 
 	if r != nil {
@@ -155,6 +159,7 @@ func newDBMetrics(db *DB, r prometheus.Registerer) *dbMetrics {
 			m.reloads,
 			m.reloadsFailed,
 			m.compactionsTriggered,
+			m.tombCleanTimer,
 		)
 	}
 	return m
@@ -180,7 +185,7 @@ func Open(dir string, l log.Logger, r prometheus.Registerer, opts *Options) (db 
 		donec:              make(chan struct{}),
 		stopc:              make(chan struct{}),
 		compactionsEnabled: true,
-		chunkPool:          chunks.NewPool(),
+		chunkPool:          chunkenc.NewPool(),
 	}
 	db.metrics = newDBMetrics(db, r)
 
@@ -278,16 +283,23 @@ func (db *DB) retentionCutoff() (bool, error) {
 	}
 
 	db.mtx.RLock()
-	defer db.mtx.RUnlock()
+	blocks := db.blocks[:]
+	db.mtx.RUnlock()
 
-	if len(db.blocks) == 0 {
+	if len(blocks) == 0 {
 		return false, nil
 	}
 
-	last := db.blocks[len(db.blocks)-1]
-	mint := last.Meta().MaxTime - int64(db.opts.RetentionDuration)
+	last := blocks[len(db.blocks)-1]
 
-	return retentionCutoff(db.dir, mint)
+	mint := last.Meta().MaxTime - int64(db.opts.RetentionDuration)
+	dirs, err := retentionCutoffDirs(db.dir, mint)
+	if err != nil {
+		return false, err
+	}
+
+	// This will close the dirs and then delete the dirs.
+	return len(dirs) > 0, db.reload(dirs...)
 }
 
 // Appender opens a new appender against the database.
@@ -345,7 +357,7 @@ func (db *DB) compact() (changes bool, err error) {
 			mint: mint,
 			maxt: maxt,
 		}
-		if err = db.compactor.Write(db.dir, head, mint, maxt); err != nil {
+		if _, err = db.compactor.Write(db.dir, head, mint, maxt); err != nil {
 			return changes, errors.Wrap(err, "persist head block")
 		}
 		changes = true
@@ -374,7 +386,7 @@ func (db *DB) compact() (changes bool, err error) {
 		default:
 		}
 
-		if err := db.compactor.Compact(db.dir, plan...); err != nil {
+		if _, err := db.compactor.Compact(db.dir, plan...); err != nil {
 			return changes, errors.Wrapf(err, "compact %s", plan)
 		}
 		changes = true
@@ -389,40 +401,37 @@ func (db *DB) compact() (changes bool, err error) {
 	return changes, nil
 }
 
-// retentionCutoff deletes all directories of blocks in dir that are strictly
+// retentionCutoffDirs returns all directories of blocks in dir that are strictly
 // before mint.
-func retentionCutoff(dir string, mint int64) (bool, error) {
+func retentionCutoffDirs(dir string, mint int64) ([]string, error) {
 	df, err := fileutil.OpenDir(dir)
 	if err != nil {
-		return false, errors.Wrapf(err, "open directory")
+		return nil, errors.Wrapf(err, "open directory")
 	}
 	defer df.Close()
 
 	dirs, err := blockDirs(dir)
 	if err != nil {
-		return false, errors.Wrapf(err, "list block dirs %s", dir)
+		return nil, errors.Wrapf(err, "list block dirs %s", dir)
 	}
 
-	changes := false
+	delDirs := []string{}
 
 	for _, dir := range dirs {
 		meta, err := readMetaFile(dir)
 		if err != nil {
-			return changes, errors.Wrapf(err, "read block meta %s", dir)
+			return nil, errors.Wrapf(err, "read block meta %s", dir)
 		}
 		// The first block we encounter marks that we crossed the boundary
 		// of deletable blocks.
 		if meta.MaxTime >= mint {
 			break
 		}
-		changes = true
 
-		if err := os.RemoveAll(dir); err != nil {
-			return changes, err
-		}
+		delDirs = append(delDirs, dir)
 	}
 
-	return changes, fileutil.Fsync(df)
+	return delDirs, nil
 }
 
 func (db *DB) getBlock(id ulid.ULID) (*Block, bool) {
@@ -572,6 +581,7 @@ func (db *DB) Close() error {
 	if db.lockf != nil {
 		merr.Add(db.lockf.Unlock())
 	}
+	merr.Add(db.head.Close())
 	return merr.Err()
 }
 
@@ -612,10 +622,11 @@ func (db *DB) Snapshot(dir string) error {
 		level.Info(db.logger).Log("msg", "snapshotting block", "block", b)
 
 		if err := b.Snapshot(dir); err != nil {
-			return errors.Wrap(err, "error snapshotting headblock")
+			return errors.Wrapf(err, "error snapshotting block: %s", b.Dir())
 		}
 	}
-	return db.compactor.Write(dir, db.head, db.head.MinTime(), db.head.MaxTime())
+	_, err := db.compactor.Write(dir, db.head, db.head.MinTime(), db.head.MaxTime())
+	return errors.Wrap(err, "snapshot head block")
 }
 
 // Querier returns a new querier over the data partition for the given time range.
@@ -684,6 +695,37 @@ func (db *DB) Delete(mint, maxt int64, ms ...labels.Matcher) error {
 		return err
 	}
 	return nil
+}
+
+// CleanTombstones re-writes any blocks with tombstones.
+func (db *DB) CleanTombstones() error {
+	db.cmtx.Lock()
+	defer db.cmtx.Unlock()
+
+	start := time.Now()
+	defer db.metrics.tombCleanTimer.Observe(float64(time.Since(start).Seconds()))
+
+	db.mtx.RLock()
+	blocks := db.blocks[:]
+	db.mtx.RUnlock()
+
+	deleted := []string{}
+	for _, b := range blocks {
+		ok, err := b.CleanTombstones(db.Dir(), db.compactor)
+		if err != nil {
+			return errors.Wrapf(err, "clean tombstones: %s", b.Dir())
+		}
+
+		if ok {
+			deleted = append(deleted, b.Dir())
+		}
+	}
+
+	if len(deleted) == 0 {
+		return nil
+	}
+
+	return errors.Wrap(db.reload(deleted...), "reload blocks")
 }
 
 func intervalOverlap(amin, amax, bmin, bmax int64) bool {

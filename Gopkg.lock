@@ -39,12 +39,6 @@
 
 [[projects]]
   branch = "master"
-  name = "github.com/dgryski/go-bits"
-  packages = ["."]
-  revision = "2ad8d707cc05b1815ce6ff2543bb5e8d8f9298ef"
-
-[[projects]]
-  branch = "master"
   name = "github.com/dgryski/go-jump"
   packages = ["."]
   revision = "e1f439676b570800a863c37b78d1f868f51a85fc"
@@ -232,12 +226,12 @@
 [[projects]]
   name = "github.com/prometheus/prometheus"
   packages = ["config","pkg/labels","pkg/textparse","pkg/timestamp","pkg/value","prompb","promql","relabel","storage","storage/remote","storage/tsdb","util/httputil","util/stats","util/strutil","util/testutil"]
-  revision = "v2.0.0"
+  revision = "83cd270ea4702349642e7861582853cd6afc4d37"
 
 [[projects]]
   name = "github.com/prometheus/tsdb"
-  packages = [".","chunks","fileutil","labels"]
-  revision = "706602daed1487f7849990678b4ece4599745905"
+  packages = [".","chunkenc","chunks","fileutil","index","labels"]
+  revision = "07ef80820ef1250db82f9544f3fcf7f0f63ccee0"
 
 [[projects]]
   name = "github.com/retailnext/hllpp"
@@ -320,6 +314,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "219e967f54e6b2330b822bc0ac994db3e82b9b6cabcb4d61732bc62f115b6e5e"
+  inputs-digest = "af487663aae1f2a7fd01adfd5c90ad577e2341556fb6691091860d3c3ea19ec4"
   solver-name = "gps-cdcl"
   solver-version = 1

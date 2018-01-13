@@ -113,16 +113,16 @@ type fanoutQuerier struct {
 	storage    *fanoutStorage
 }
 
-func (q fanoutQuerier) Select(matchers ...*labels.Matcher) storage.SeriesSet {
+func (q fanoutQuerier) Select(matchers ...*labels.Matcher) (storage.SeriesSet, error) {
 	protoMatchers, err := toLabelMatchers(matchers)
 	if err != nil {
-		return errSeriesSet{err}
+		return nil, err
 	}
 
 	res, err := q.client.Read(q.ctx, q.mint, q.maxt, protoMatchers)
 	// FIXME: Don't fail if just one node fails to respond
 	if err != nil {
-		return errSeriesSet{err}
+		return nil, err
 	}
 
 	series := make([]storage.Series, 0, len(res))
@@ -136,7 +136,7 @@ func (q fanoutQuerier) Select(matchers ...*labels.Matcher) storage.SeriesSet {
 	sort.Sort(byLabel(series))
 	return &concreteSeriesSet{
 		series: series,
-	}
+	}, nil
 }
 
 func (_ fanoutQuerier) LabelValues(name string) ([]string, error) {
@@ -221,23 +221,6 @@ func labelPairsToLabels(labelPairs []*prompb.Label) labels.Labels {
 	}
 	sort.Sort(result)
 	return result
-}
-
-// errSeriesSet implements storage.SeriesSet, just returning an error.
-type errSeriesSet struct {
-	err error
-}
-
-func (errSeriesSet) Next() bool {
-	return false
-}
-
-func (errSeriesSet) At() storage.Series {
-	return nil
-}
-
-func (e errSeriesSet) Err() error {
-	return e.err
 }
 
 // concreteSeriesSet implements storage.SeriesSet.

@@ -96,10 +96,15 @@ func (re *reader) HandlerFunc(w http.ResponseWriter, r *http.Request) {
 		}
 		defer querier.Close()
 
-		sset := querier.Select(matchers...)
+		sset, err := querier.Select(matchers...)
+		if err != nil {
+			re.log.Error(err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 		resp.Results[i], err = remote.ToQueryResult(sset)
 		if err != nil {
-			re.log.Warning(err)
+			re.log.Error(err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -107,7 +112,7 @@ func (re *reader) HandlerFunc(w http.ResponseWriter, r *http.Request) {
 
 	data, err := resp.Marshal()
 	if err != nil {
-		re.log.Warning(err)
+		re.log.Error(err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -118,7 +123,7 @@ func (re *reader) HandlerFunc(w http.ResponseWriter, r *http.Request) {
 	compressed = snappy.Encode(nil, data)
 	_, err = w.Write(compressed)
 	if err != nil {
-		re.log.Warning(err)
+		re.log.Error(err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		re.log.Error(err)
 		return
