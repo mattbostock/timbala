@@ -38,6 +38,7 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/storage/remote"
 	"github.com/prometheus/prometheus/util/httputil"
+	"github.com/prometheus/prometheus/util/stats"
 )
 
 type status string
@@ -153,7 +154,9 @@ func (api *API) Register(r *route.Router) {
 	r.Options("/*path", instr("options", api.options))
 
 	r.Get("/query", instr("query", api.query))
+	r.Post("/query", instr("query", api.query))
 	r.Get("/query_range", instr("query_range", api.queryRange))
+	r.Post("/query_range", instr("query_range", api.queryRange))
 
 	r.Get("/label/:name/values", instr("label_values", api.labelValues))
 
@@ -168,8 +171,9 @@ func (api *API) Register(r *route.Router) {
 }
 
 type queryData struct {
-	ResultType promql.ValueType `json:"resultType"`
-	Result     promql.Value     `json:"result"`
+	ResultType promql.ValueType  `json:"resultType"`
+	Result     promql.Value      `json:"result"`
+	Stats      *stats.QueryStats `json:"stats,omitempty"`
 }
 
 func (api *API) options(r *http.Request) (interface{}, *apiError) {
@@ -217,9 +221,17 @@ func (api *API) query(r *http.Request) (interface{}, *apiError) {
 		}
 		return nil, &apiError{errorExec, res.Err}
 	}
+
+	// Optional stats field in response if parameter "stats" is not empty.
+	var qs *stats.QueryStats
+	if r.FormValue("stats") != "" {
+		qs = stats.NewQueryStats(qry.Stats())
+	}
+
 	return &queryData{
 		ResultType: res.Value.Type(),
 		Result:     res.Value,
+		Stats:      qs,
 	}, nil
 }
 
@@ -282,9 +294,16 @@ func (api *API) queryRange(r *http.Request) (interface{}, *apiError) {
 		return nil, &apiError{errorExec, res.Err}
 	}
 
+	// Optional stats field in response if parameter "stats" is not empty.
+	var qs *stats.QueryStats
+	if r.FormValue("stats") != "" {
+		qs = stats.NewQueryStats(qry.Stats())
+	}
+
 	return &queryData{
 		ResultType: res.Value.Type(),
 		Result:     res.Value,
+		Stats:      qs,
 	}, nil
 }
 
@@ -361,7 +380,11 @@ func (api *API) series(r *http.Request) (interface{}, *apiError) {
 	var set storage.SeriesSet
 
 	for _, mset := range matcherSets {
-		set = storage.DeduplicateSeriesSet(set, q.Select(mset...))
+		s, err := q.Select(mset...)
+		if err != nil {
+			return nil, &apiError{errorExec, err}
+		}
+		set = storage.DeduplicateSeriesSet(set, s)
 	}
 
 	metrics := []labels.Labels{}
@@ -498,7 +521,12 @@ func (api *API) remoteRead(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		resp.Results[i], err = remote.ToQueryResult(querier.Select(filteredMatchers...))
+		set, err := querier.Select(filteredMatchers...)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		resp.Results[i], err = remote.ToQueryResult(set)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return

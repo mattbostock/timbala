@@ -3,8 +3,13 @@ package tsdb
 import (
 	"encoding/binary"
 	"hash"
+	"hash/crc32"
 	"unsafe"
+
+	"github.com/pkg/errors"
 )
+
+var errInvalidSize = errors.New("invalid size")
 
 // enbuf is a helper type to populate a byte slice with various types.
 type encbuf struct {
@@ -76,6 +81,11 @@ func (d *decbuf) uvarint() int      { return int(d.uvarint64()) }
 func (d *decbuf) uvarint32() uint32 { return uint32(d.uvarint64()) }
 func (d *decbuf) be32int() int      { return int(d.be32()) }
 func (d *decbuf) be64int64() int64  { return int64(d.be64()) }
+
+// crc32 returns a CRC32 checksum over the remaining bytes.
+func (d *decbuf) crc32() uint32 {
+	return crc32.Checksum(d.b, castagnoliTable)
+}
 
 func (d *decbuf) uvarintStr() string {
 	l := d.uvarint64()
