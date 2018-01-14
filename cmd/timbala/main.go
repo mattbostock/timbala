@@ -215,7 +215,13 @@ func main() {
 	router.Post(write.Route, writer.HandlerFunc)
 	router.Get(metricsRoute, promhttp.Handler().ServeHTTP)
 
-	queryEngine := promql.NewEngine(fanoutStorage, promql.DefaultEngineOptions)
+	engineOptions := &promql.EngineOptions{
+		MaxConcurrentQueries: 20,
+		Timeout:              2 * time.Minute,
+		Logger:               gokitlog.NewNopLogger(),
+		Metrics:              prometheus.DefaultRegisterer,
+	}
+	queryEngine := promql.NewEngine(fanoutStorage, engineOptions)
 	api := v1API.NewAPI(queryEngine, fanoutStorage)
 	api.Register(router.WithPrefix(apiRoute))
 

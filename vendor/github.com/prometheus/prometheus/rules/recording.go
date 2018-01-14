@@ -31,11 +31,11 @@ import (
 
 // A RecordingRule records its vector expression into new timeseries.
 type RecordingRule struct {
-	name                  string
-	vector                promql.Expr
-	labels                labels.Labels
-	mtx                   sync.Mutex
-	evaluationTimeSeconds float64
+	name           string
+	vector         promql.Expr
+	labels         labels.Labels
+	mtx            sync.Mutex
+	evaluationTime time.Duration
 }
 
 // NewRecordingRule returns a new recording rule.
@@ -53,32 +53,11 @@ func (rule *RecordingRule) Name() string {
 }
 
 // Eval evaluates the rule and then overrides the metric names and labels accordingly.
-func (rule *RecordingRule) Eval(ctx context.Context, ts time.Time, engine *promql.Engine, _ *url.URL) (promql.Vector, error) {
-	query, err := engine.NewInstantQuery(rule.vector.String(), ts)
+func (rule *RecordingRule) Eval(ctx context.Context, ts time.Time, query QueryFunc, _ *url.URL) (promql.Vector, error) {
+	vector, err := query(ctx, rule.vector.String(), ts)
 	if err != nil {
 		return nil, err
 	}
-
-	var (
-		result = query.Exec(ctx)
-		vector promql.Vector
-	)
-	if result.Err != nil {
-		return nil, err
-	}
-
-	switch v := result.Value.(type) {
-	case promql.Vector:
-		vector = v
-	case promql.Scalar:
-		vector = promql.Vector{promql.Sample{
-			Point:  promql.Point(v),
-			Metric: labels.Labels{},
-		}}
-	default:
-		return nil, fmt.Errorf("rule result is not a vector or scalar")
-	}
-
 	// Override the metric name and labels.
 	for i := range vector {
 		sample := &vector[i]
@@ -116,18 +95,18 @@ func (rule *RecordingRule) String() string {
 	return string(byt)
 }
 
-// setEvaluationTimeSeconds updates evaluationTimeSeconds to the time in seconds it took to evaluate the rule on its last evaluation.
-func (rule *RecordingRule) setEvaluationTimeSeconds(seconds float64) {
+// SetEvaluationTime updates evaluationTimeSeconds to the time in seconds it took to evaluate the rule on its last evaluation.
+func (rule *RecordingRule) SetEvaluationTime(dur time.Duration) {
 	rule.mtx.Lock()
 	defer rule.mtx.Unlock()
-	rule.evaluationTimeSeconds = seconds
+	rule.evaluationTime = dur
 }
 
-// GetEvaluationTimeSeconds returns the time in seconds it took to evaluate the recording rule.
-func (rule *RecordingRule) GetEvaluationTimeSeconds() float64 {
+// GetEvaluationTime returns the time in seconds it took to evaluate the recording rule.
+func (rule *RecordingRule) GetEvaluationTime() time.Duration {
 	rule.mtx.Lock()
 	defer rule.mtx.Unlock()
-	return rule.evaluationTimeSeconds
+	return rule.evaluationTime
 }
 
 // HTMLSnippet returns an HTML snippet representing this rule.

@@ -43,6 +43,7 @@ import (
 	"github.com/prometheus/common/promlog"
 	promlogflag "github.com/prometheus/common/promlog/flag"
 	"github.com/prometheus/prometheus/config"
+	"github.com/prometheus/prometheus/discovery"
 	"github.com/prometheus/prometheus/notifier"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/retrieval"
@@ -50,6 +51,7 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/storage/remote"
 	"github.com/prometheus/prometheus/storage/tsdb"
+	"github.com/prometheus/prometheus/util/strutil"
 	"github.com/prometheus/prometheus/web"
 )
 
@@ -95,6 +97,9 @@ func main() {
 	}{
 		notifier: notifier.Options{
 			Registerer: prometheus.DefaultRegisterer,
+		},
+		queryEngine: promql.EngineOptions{
+			Metrics: prometheus.DefaultRegisterer,
 		},
 	}
 
@@ -143,12 +148,12 @@ func main() {
 	a.Flag("storage.tsdb.path", "Base path for metrics storage.").
 		Default("data/").StringVar(&cfg.localStoragePath)
 
-	a.Flag("storage.tsdb.min-block-duration", "Minimum duration of a data block before being persisted.").
-		Default("2h").SetValue(&cfg.tsdb.MinBlockDuration)
+	a.Flag("storage.tsdb.min-block-duration", "Minimum duration of a data block before being persisted. For use in testing.").
+		Hidden().Default("2h").SetValue(&cfg.tsdb.MinBlockDuration)
 
 	a.Flag("storage.tsdb.max-block-duration",
-		"Maximum duration compacted blocks may span. (Defaults to 10% of the retention period)").
-		PlaceHolder("<duration>").SetValue(&cfg.tsdb.MaxBlockDuration)
+		"Maximum duration compacted blocks may span. For use in testing. (Defaults to 10% of the retention period).").
+		Hidden().PlaceHolder("<duration>").SetValue(&cfg.tsdb.MaxBlockDuration)
 
 	a.Flag("storage.tsdb.retention", "How long to retain samples in the storage.").
 		Default("15d").SetValue(&cfg.tsdb.Retention)
@@ -216,6 +221,7 @@ func main() {
 	level.Info(logger).Log("msg", "Starting Prometheus", "version", version.Info())
 	level.Info(logger).Log("build_context", version.BuildContext())
 	level.Info(logger).Log("host_details", Uname())
+	level.Info(logger).Log("fd_limits", FdLimits())
 
 	var (
 		localStorage  = &tsdb.ReadyStorage{}
@@ -225,26 +231,29 @@ func main() {
 
 	cfg.queryEngine.Logger = log.With(logger, "component", "query engine")
 	var (
-		notifier       = notifier.New(&cfg.notifier, log.With(logger, "component", "notifier"))
-		targetManager  = retrieval.NewTargetManager(fanoutStorage, log.With(logger, "component", "target manager"))
-		queryEngine    = promql.NewEngine(fanoutStorage, &cfg.queryEngine)
-		ctx, cancelCtx = context.WithCancel(context.Background())
+		ctxWeb, cancelWeb = context.WithCancel(context.Background())
+		ctxRule           = context.Background()
+
+		notifier         = notifier.New(&cfg.notifier, log.With(logger, "component", "notifier"))
+		discoveryManager = discovery.NewManager(log.With(logger, "component", "discovery manager"))
+		scrapeManager    = retrieval.NewScrapeManager(log.With(logger, "component", "scrape manager"), fanoutStorage)
+		queryEngine      = promql.NewEngine(fanoutStorage, &cfg.queryEngine)
+		ruleManager      = rules.NewManager(&rules.ManagerOptions{
+			Appendable:  fanoutStorage,
+			QueryFunc:   rules.EngineQueryFunc(queryEngine),
+			NotifyFunc:  sendAlerts(notifier, cfg.web.ExternalURL.String()),
+			Context:     ctxRule,
+			ExternalURL: cfg.web.ExternalURL,
+			Registerer:  prometheus.DefaultRegisterer,
+			Logger:      log.With(logger, "component", "rule manager"),
+		})
 	)
 
-	ruleManager := rules.NewManager(&rules.ManagerOptions{
-		Appendable:  fanoutStorage,
-		Notifier:    notifier,
-		QueryEngine: queryEngine,
-		Context:     ctx,
-		ExternalURL: cfg.web.ExternalURL,
-		Logger:      log.With(logger, "component", "rule manager"),
-	})
-
-	cfg.web.Context = ctx
+	cfg.web.Context = ctxWeb
 	cfg.web.TSDB = localStorage.Get
 	cfg.web.Storage = fanoutStorage
 	cfg.web.QueryEngine = queryEngine
-	cfg.web.TargetManager = targetManager
+	cfg.web.ScrapeManager = scrapeManager
 	cfg.web.RuleManager = ruleManager
 	cfg.web.Notifier = notifier
 
@@ -262,6 +271,7 @@ func main() {
 		cfg.web.Flags[f.Name] = f.Value.String()
 	}
 
+	// Depends on cfg.web.ScrapeManager so needs to be after cfg.web.ScrapeManager = scrapeManager
 	webHandler := web.New(log.With(logger, "component", "web"), &cfg.web)
 
 	// Monitor outgoing connections on default transport with conntrack.
@@ -269,12 +279,25 @@ func main() {
 		conntrack.DialWithTracing(),
 	)
 
-	reloadables := []Reloadable{
-		remoteStorage,
-		targetManager,
-		ruleManager,
-		webHandler,
-		notifier,
+	reloaders := []func(cfg *config.Config) error{
+		remoteStorage.ApplyConfig,
+		webHandler.ApplyConfig,
+		notifier.ApplyConfig,
+		discoveryManager.ApplyConfig,
+		scrapeManager.ApplyConfig,
+		func(cfg *config.Config) error {
+			// Get all rule files matching the configuration oaths.
+			var files []string
+			for _, pat := range cfg.RuleFiles {
+				fs, err := filepath.Glob(pat)
+				if err != nil {
+					// The only error can be a bad pattern.
+					return fmt.Errorf("error retrieving rule files for %s: %s", pat, err)
+				}
+				files = append(files, fs...)
+			}
+			return ruleManager.Update(time.Duration(cfg.GlobalConfig.EvaluationInterval), files)
+		},
 	}
 
 	prometheus.MustRegister(configSuccess)
@@ -309,6 +332,35 @@ func main() {
 		)
 	}
 	{
+		ctxDiscovery, cancelDiscovery := context.WithCancel(context.Background())
+		g.Add(
+			func() error {
+				err := discoveryManager.Run(ctxDiscovery)
+				level.Info(logger).Log("msg", "Discovery manager stopped")
+				return err
+			},
+			func(err error) {
+				level.Info(logger).Log("msg", "Stopping discovery manager...")
+				cancelDiscovery()
+			},
+		)
+	}
+	{
+		g.Add(
+			func() error {
+				err := scrapeManager.Run(discoveryManager.SyncCh())
+				level.Info(logger).Log("msg", "Scrape manager stopped")
+				return err
+			},
+			func(err error) {
+				// Scrape manager needs to be stopped before closing the local TSDB
+				// so that it doesn't try to write samples to a closed storage.
+				level.Info(logger).Log("msg", "Stopping scrape manager...")
+				scrapeManager.Stop()
+			},
+		)
+	}
+	{
 		// Make sure that sighup handler is registered with a redirect to the channel before the potentially
 		// long and synchronous tsdb init.
 		hup := make(chan os.Signal)
@@ -327,11 +379,11 @@ func main() {
 				for {
 					select {
 					case <-hup:
-						if err := reloadConfig(cfg.configFile, logger, reloadables...); err != nil {
+						if err := reloadConfig(cfg.configFile, logger, reloaders...); err != nil {
 							level.Error(logger).Log("msg", "Error reloading config", "err", err)
 						}
 					case rc := <-webHandler.Reload():
-						if err := reloadConfig(cfg.configFile, logger, reloadables...); err != nil {
+						if err := reloadConfig(cfg.configFile, logger, reloaders...); err != nil {
 							level.Error(logger).Log("msg", "Error reloading config", "err", err)
 							rc <- err
 						} else {
@@ -360,7 +412,7 @@ func main() {
 					return nil
 				}
 
-				if err := reloadConfig(cfg.configFile, logger, reloadables...); err != nil {
+				if err := reloadConfig(cfg.configFile, logger, reloaders...); err != nil {
 					return fmt.Errorf("Error loading config %s", err)
 				}
 
@@ -408,7 +460,7 @@ func main() {
 	{
 		g.Add(
 			func() error {
-				if err := webHandler.Run(ctx); err != nil {
+				if err := webHandler.Run(ctxWeb); err != nil {
 					return fmt.Errorf("Error starting web server: %s", err)
 				}
 				return nil
@@ -417,7 +469,7 @@ func main() {
 				// Keep this interrupt before the ruleManager.Stop().
 				// Shutting down the query engine before the rule manager will cause pending queries
 				// to be canceled and ensures a quick shutdown of the rule manager.
-				cancelCtx()
+				cancelWeb()
 			},
 		)
 	}
@@ -449,34 +501,13 @@ func main() {
 			},
 		)
 	}
-	{
-		// TODO(krasi) refactor targetManager.Run() to be blocking to avoid using an extra blocking channel.
-		cancel := make(chan struct{})
-		g.Add(
-			func() error {
-				targetManager.Run()
-				<-cancel
-				return nil
-			},
-			func(err error) {
-				targetManager.Stop()
-				close(cancel)
-			},
-		)
-	}
 	if err := g.Run(); err != nil {
 		level.Error(logger).Log("err", err)
 	}
 	level.Info(logger).Log("msg", "See you next time!")
 }
 
-// Reloadable things can change their internal state to match a new config
-// and handle failure gracefully.
-type Reloadable interface {
-	ApplyConfig(*config.Config) error
-}
-
-func reloadConfig(filename string, logger log.Logger, rls ...Reloadable) (err error) {
+func reloadConfig(filename string, logger log.Logger, rls ...func(*config.Config) error) (err error) {
 	level.Info(logger).Log("msg", "Loading configuration file", "filename", filename)
 
 	defer func() {
@@ -495,7 +526,7 @@ func reloadConfig(filename string, logger log.Logger, rls ...Reloadable) (err er
 
 	failed := false
 	for _, rl := range rls {
-		if err := rl.ApplyConfig(conf); err != nil {
+		if err := rl(conf); err != nil {
 			level.Error(logger).Log("msg", "Failed to apply configuration", "err", err)
 			failed = true
 		}
@@ -542,4 +573,34 @@ func computeExternalURL(u, listenAddr string) (*url.URL, error) {
 	eu.Path = ppref
 
 	return eu, nil
+}
+
+// sendAlerts implements a the rules.NotifyFunc for a Notifier.
+// It filters any non-firing alerts from the input.
+func sendAlerts(n *notifier.Notifier, externalURL string) rules.NotifyFunc {
+	return func(ctx context.Context, expr string, alerts ...*rules.Alert) error {
+		var res []*notifier.Alert
+
+		for _, alert := range alerts {
+			// Only send actually firing alerts.
+			if alert.State == rules.StatePending {
+				continue
+			}
+			a := &notifier.Alert{
+				StartsAt:     alert.FiredAt,
+				Labels:       alert.Labels,
+				Annotations:  alert.Annotations,
+				GeneratorURL: externalURL + strutil.TableLinkForExpression(expr),
+			}
+			if !alert.ResolvedAt.IsZero() {
+				a.EndsAt = alert.ResolvedAt
+			}
+			res = append(res, a)
+		}
+
+		if len(alerts) > 0 {
+			n.Send(res...)
+		}
+		return nil
+	}
 }
