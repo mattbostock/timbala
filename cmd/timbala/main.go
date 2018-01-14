@@ -218,7 +218,7 @@ func main() {
 	engineOptions := &promql.EngineOptions{
 		MaxConcurrentQueries: 20,
 		Timeout:              2 * time.Minute,
-		Logger:               gokitlog.NewNopLogger(),
+		Logger:               gokitLogger,
 		Metrics:              prometheus.DefaultRegisterer,
 	}
 	queryEngine := promql.NewEngine(fanoutStorage, engineOptions)
