@@ -68,7 +68,7 @@ func (re *reader) HandlerFunc(w http.ResponseWriter, r *http.Request) {
 		Results: make([]*prompb.QueryResult, len(req.Queries)),
 	}
 
-	internal := len(r.Header.Get(HTTPHeaderInternalRead)) > 0
+	internal := r.Header.Get(HTTPHeaderInternalRead) != ""
 	for i, query := range req.Queries {
 		// FIXME paralellise queries
 		matchers, err := fromLabelMatchers(query.Matchers)
