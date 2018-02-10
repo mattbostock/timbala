@@ -49,24 +49,29 @@ func New(c cluster.Cluster, l *logrus.Logger, s storage.Storage) *fanoutStorage 
 }
 
 func (f *fanoutStorage) Querier(ctx context.Context, mint int64, maxt int64) (storage.Querier, error) {
-	clients, err := f.remoteClients()
-	if err != nil {
-		return nil, err
-	}
-
 	localQuerier, err := f.localStore.Querier(ctx, mint, maxt)
 	if err != nil {
 		return nil, err
 	}
 	queriers := append([]storage.Querier{}, localQuerier)
 
-	for _, c := range clients {
-		queriers = append(queriers, fanoutQuerier{
-			ctx:     ctx,
-			client:  c,
-			maxt:    maxt,
-			mint:    mint,
-			storage: f,
+	// FIXME handle cluster node membership changes
+	for _, n := range f.clstr.Nodes() {
+		if n.Name() == f.clstr.LocalNode().Name() {
+			continue
+		}
+
+		httpAddr, err := n.HTTPAddr()
+		if err != nil {
+			return nil, err
+		}
+
+		queriers = append(queriers, remoteQuerier{
+			ctx:  ctx,
+			maxt: maxt,
+			mint: mint,
+			// FIXME handle HTTPS
+			url: "http://" + httpAddr + read.Route,
 		})
 	}
 
@@ -85,41 +90,19 @@ func (f *fanoutStorage) Close() error {
 	return nil
 }
 
-func (f *fanoutStorage) remoteClients() ([]*remoteClient, error) {
-	// FIXME handle cluster size changes
-	clients := make([]*remoteClient, 0, len(f.clstr.Nodes()))
-
-	for _, n := range f.clstr.Nodes() {
-		if n.Name() == f.clstr.LocalNode().Name() {
-			continue
-		}
-
-		addr, err := n.HTTPAddr()
-		if err != nil {
-			return nil, err
-		}
-		clients = append(clients, &remoteClient{
-			httpURL: "http://" + addr,
-		})
-	}
-
-	return clients, nil
-}
-
-type fanoutQuerier struct {
+type remoteQuerier struct {
 	ctx        context.Context
-	client     *remoteClient
 	mint, maxt int64
-	storage    *fanoutStorage
+	url        string
 }
 
-func (q fanoutQuerier) Select(matchers ...*labels.Matcher) (storage.SeriesSet, error) {
+func (q remoteQuerier) Select(matchers ...*labels.Matcher) (storage.SeriesSet, error) {
 	protoMatchers, err := toLabelMatchers(matchers)
 	if err != nil {
 		return nil, err
 	}
 
-	res, err := q.client.Read(q.ctx, q.mint, q.maxt, protoMatchers)
+	res, err := q.remoteRead(protoMatchers)
 	// FIXME: Don't fail if just one node fails to respond
 	if err != nil {
 		return nil, err
@@ -139,24 +122,22 @@ func (q fanoutQuerier) Select(matchers ...*labels.Matcher) (storage.SeriesSet, e
 	}, nil
 }
 
-func (_ fanoutQuerier) LabelValues(name string) ([]string, error) {
+func (_ remoteQuerier) LabelValues(name string) ([]string, error) {
 	panic("not implemented")
 }
 
-func (_ fanoutQuerier) Close() error {
+func (_ remoteQuerier) Close() error {
 	// Nothing to do
 	return nil
 }
 
-type remoteClient struct{ httpURL string }
-
-func (c *remoteClient) Read(ctx context.Context, from, through int64, matchers []*prompb.LabelMatcher) ([]*prompb.TimeSeries, error) {
+func (q remoteQuerier) remoteRead(matchers []*prompb.LabelMatcher) ([]*prompb.TimeSeries, error) {
 	req := &prompb.ReadRequest{
 		// FIXME: Support batching multiple queries into one read
 		// request, as the protobuf interface allows for it.
 		Queries: []*prompb.Query{{
-			StartTimestampMs: from,
-			EndTimestampMs:   through,
+			StartTimestampMs: q.mint,
+			EndTimestampMs:   q.maxt,
 			Matchers:         matchers,
 		}},
 	}
@@ -167,7 +148,7 @@ func (c *remoteClient) Read(ctx context.Context, from, through int64, matchers [
 	}
 
 	compressed := snappy.Encode(nil, data)
-	httpReq, err := http.NewRequest("POST", c.httpURL+read.Route, bytes.NewReader(compressed))
+	httpReq, err := http.NewRequest("POST", q.url, bytes.NewReader(compressed))
 	if err != nil {
 		return nil, fmt.Errorf("unable to create request: %v", err)
 	}
@@ -176,7 +157,7 @@ func (c *remoteClient) Read(ctx context.Context, from, through int64, matchers [
 	httpReq.Header.Set(read.HTTPHeaderRemoteRead, read.HTTPHeaderRemoteReadVersion)
 	httpReq.Header.Set(read.HTTPHeaderInternalRead, read.HTTPHeaderInternalReadVersion)
 
-	ctx, cancel := context.WithTimeout(ctx, readTimeoutSeconds)
+	ctx, cancel := context.WithTimeout(q.ctx, readTimeoutSeconds)
 	defer cancel()
 
 	httpResp, err := ctxhttp.Do(ctx, httpClient, httpReq)
