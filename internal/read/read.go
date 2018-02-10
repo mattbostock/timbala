@@ -81,18 +81,13 @@ func (re *reader) HandlerFunc(w http.ResponseWriter, r *http.Request) {
 		var querier storage.Querier
 		if internal {
 			querier, err = re.localStore.Querier(r.Context(), query.StartTimestampMs, query.EndTimestampMs)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				re.log.Error(err)
-				return
-			}
 		} else {
 			querier, err = re.fanoutStore.Querier(r.Context(), query.StartTimestampMs, query.EndTimestampMs)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				re.log.Error(err)
-				return
-			}
+		}
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			re.log.Error(err)
+			return
 		}
 		defer querier.Close()
 
