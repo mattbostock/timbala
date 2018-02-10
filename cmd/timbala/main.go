@@ -210,7 +210,7 @@ func main() {
 
 	fanoutStorage := fanout.New(clstr, log.StandardLogger(), promtsdb.Adapter(localStorage, 0))
 	reader := read.New(clstr, log.StandardLogger(), promtsdb.Adapter(localStorage, 0), fanoutStorage)
-	writer := write.New(clstr, log.StandardLogger(), promtsdb.Adapter(localStorage, 0))
+	writer := write.New(clstr, log.StandardLogger(), promtsdb.Adapter(localStorage, 0), fanoutStorage)
 	router.Post(read.Route, reader.HandlerFunc)
 	router.Post(write.Route, writer.HandlerFunc)
 	router.Get(metricsRoute, promhttp.Handler().ServeHTTP)
