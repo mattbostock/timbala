@@ -101,7 +101,13 @@ func (wr *writer) HandlerFunc(w http.ResponseWriter, r *http.Request) {
 
 		for _, s := range sseries.Samples {
 			// FIXME: Look at using AddFast
-			appender.Add(m, s.Timestamp, s.Value)
+			// FIXME handle errors
+			_, err = appender.Add(m, s.Timestamp, s.Value)
+			if err != nil {
+				wr.log.Error(err)
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
 		}
 	}
 

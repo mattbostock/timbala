@@ -41,7 +41,7 @@ func New(c cluster.Cluster, l *logrus.Logger, s storage.Storage) *fanoutStorage 
 }
 
 func (f *fanoutStorage) Appender() (storage.Appender, error) {
-	return newFanoutAppender(f.clstr), nil
+	return newFanoutAppender(f.clstr, f.localStore), nil
 }
 
 func (f *fanoutStorage) Querier(ctx context.Context, mint int64, maxt int64) (storage.Querier, error) {
