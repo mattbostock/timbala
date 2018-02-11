@@ -23,10 +23,6 @@
 
 [[constraint]]
   branch = "master"
-  name = "github.com/golang/protobuf"
-
-[[constraint]]
-  branch = "master"
   name = "github.com/golang/snappy"
 
 [[constraint]]
