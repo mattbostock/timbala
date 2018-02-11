@@ -42,7 +42,7 @@ services:
     depends_on:
       - timbala_1
   prometheus:
-    image: prom/prometheus:v1.7.1
+    image: prom/prometheus:v1.8.2
     command:
       - '-config.file=/etc/prometheus/prometheus.yml'
       - '-storage.local.engine=none'
