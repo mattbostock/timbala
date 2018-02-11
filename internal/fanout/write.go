@@ -177,7 +177,7 @@ func remoteWrite(url string, ctx context.Context, series []*prompb.TimeSeries) e
 
 	httpResp, err := ctxhttp.Do(ctx, http.DefaultClient, nodeReq)
 	if err != nil {
-		return nil
+		return err
 	}
 	httpResp.Body.Close()
 

@@ -29,7 +29,7 @@ func TestPrometheusMetricsCanBeQueried(t *testing.T) {
 	// Wait long enough for evaluation_interval and scrape_interval to
 	// pass, as specified in prometheus.yml, plus an additional 2 seconds
 	// to allow time for the data to be ingested to all nodes.
-	time.Sleep(4 * time.Second)
+	time.Sleep(60 * time.Second)
 
 	var wg sync.WaitGroup
 	for _, a := range timbalaAddr {

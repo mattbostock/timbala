@@ -2,6 +2,7 @@ package write
 
 import (
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"sort"
@@ -79,6 +80,7 @@ func (wr *writer) HandlerFunc(w http.ResponseWriter, r *http.Request) {
 	internal := r.Header.Get(HTTPHeaderInternalWrite) != ""
 	if internal {
 		// This is an internal write, so don't replicate it to other nodes.
+		wr.log.Debugf("Internal write for %d series", len(req.Timeseries))
 		appender, err = wr.localStore.Appender()
 	} else {
 		appender, err = wr.fanoutStore.Appender()
@@ -102,6 +104,7 @@ func (wr *writer) HandlerFunc(w http.ResponseWriter, r *http.Request) {
 		for _, s := range sseries.Samples {
 			// FIXME: Look at using AddFast
 			// FIXME handle errors
+			fmt.Println(m, s.Timestamp, s.Value)
 			_, err = appender.Add(m, s.Timestamp, s.Value)
 			if err != nil {
 				wr.log.Error(err)
@@ -112,5 +115,10 @@ func (wr *writer) HandlerFunc(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Intentionally avoid defer on hot path
-	appender.Commit()
+	err = appender.Commit()
+	if err != nil {
+		wr.log.Error(err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 }
